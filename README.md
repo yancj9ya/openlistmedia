@@ -84,6 +84,29 @@ docker compose up --build
 - 本地真实配置文件 [`config.yml`](config.yml) 已被 [`.gitignore`](.gitignore) 忽略，不建议提交到 Git。
 - 建议把模板配置维护在 [`config.example.yml`](config.example.yml) 中。
 
+### GitHub Actions 自动构建镜像
+
+仓库已新增工作流 [`docker-image.yml`](.github/workflows/docker-image.yml)，会在推送到默认分支时自动构建并推送镜像到 `ghcr.io`。
+
+行为说明：
+
+- 工作流文件：[`docker-image.yml`](.github/workflows/docker-image.yml)
+- 触发条件：`push` 到 `main` / `master`，以及手动触发
+- 推送目标：`ghcr.io/<你的 GitHub 用户名或组织名>/openlistmedia`
+- 默认标签包括：分支名、提交 SHA、默认分支上的 `latest`
+
+使用前提：
+
+- 仓库需托管在 GitHub
+- 需要允许 Actions 写入 GitHub Packages
+- 工作流默认使用 [`GITHUB_TOKEN`](.github/workflows/docker-image.yml) 登录 `ghcr.io`
+
+镜像地址示例：
+
+```text
+ghcr.io/<owner>/openlistmedia:latest
+```
+
 ### MVP 已落地与预留项
 
 已落地：
