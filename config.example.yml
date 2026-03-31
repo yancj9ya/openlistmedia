@@ -1,0 +1,57 @@
+openlist:
+  base_url: http://127.0.0.1:5244
+  token: ''
+  username: admin
+  password: your-password
+  hash_login: false
+
+tmdb:
+  read_access_token: ''
+  api_key: ''
+  language: zh-CN
+
+media_wall:
+  media_root: /影视资源
+  output: media_wall_site/data/library.json
+  site_dir: media_wall_site
+  port: 8000
+  item_url_template: http://127.0.0.1:5244/d{path}?sign={sign}
+  database_path: media_wall.db
+  cache_ttl_seconds: 86400
+  list_retry_count: 2
+  retry_delay_seconds: 1
+  skip_failed_directories: true
+  skip_directories:
+    - 热更
+
+backend:
+  host: 0.0.0.0
+  port: 8000
+  api_prefix: /api/v1
+  admin_token: ''
+  cors:
+    allow_origins:
+      - http://127.0.0.1:5173
+      - http://localhost:5173
+    allow_methods:
+      - GET
+      - POST
+      - OPTIONS
+    allow_headers:
+      - Content-Type
+      - X-Admin-Token
+      - X-Access-Passcode
+
+frontend:
+  site_url: http://127.0.0.1:8000
+  dev_server_url: http://127.0.0.1:5173
+  dist_dir: frontend/dist
+  reverse_proxy_api_prefix: /api/v1
+  admin_passcode: admin
+  visitor_passcode: yancj
+
+tests:
+  openlist:
+    path: /
+  tmdb:
+    query: Inception

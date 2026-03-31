@@ -1,0 +1,10 @@
+config.yml
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.cache/
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+*.tsbuildinfo

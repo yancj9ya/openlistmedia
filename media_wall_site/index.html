@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenList 影视海报墙迁移说明</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <main class="legacy-card">
+        <p class="eyebrow">Legacy Entry</p>
+        <h1>旧静态入口已降级</h1>
+        <p class="hero-copy">
+          当前 `media_wall_site/` 仅保留兼容说明，不再承载长期业务逻辑。请使用独立的 React + Vite 前端工程 `frontend/` 作为正式入口。
+        </p>
+        <ul class="meta-list">
+          <li>开发模式：进入 `frontend/` 后执行 `npm install`、`npm run dev`。</li>
+          <li>生产模式：执行 `npm run build` 后部署 `frontend/dist/`，并通过反向代理转发 `/api/v1`。</li>
+          <li>兼容访问：如已配置新前端地址，可点击下方按钮跳转。</li>
+        </ul>
+        <div class="action-row">
+          <a id="frontend-entry" class="button-link" href="/" target="_blank" rel="noreferrer">打开新前端</a>
+          <a class="button-link secondary-link" href="../README.md" target="_blank" rel="noreferrer">查看部署说明</a>
+        </div>
+        <p id="legacy-message" class="path-pill">正在读取兼容入口配置...</p>
+      </main>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
