@@ -12,6 +12,7 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [skipDirectoriesInput, setSkipDirectoriesInput] = useState('');
 
   useEffect(() => {
     if (!isAdmin) {
@@ -25,6 +26,7 @@ export function SettingsPage() {
       .then((payload) => {
         if (!cancelled) {
           setSettings(payload);
+          setSkipDirectoriesInput((payload.media_wall.skip_directories || []).join(' | '));
         }
       })
       .catch((reason) => {
@@ -65,6 +67,7 @@ export function SettingsPage() {
     try {
       const payload = await saveSettings(settings);
       setSettings(payload);
+      setSkipDirectoriesInput((payload.media_wall.skip_directories || []).join(' | '));
       setMessage('配置已保存到 config.yml');
     } catch (reason) {
       if (reason instanceof ApiClientError) {
@@ -161,10 +164,17 @@ export function SettingsPage() {
                   <input value={settings.media_wall.item_url_template} onChange={(event) => updateField(['media_wall', 'item_url_template'], event.target.value)} />
                 </label>
                 <label>
-                  <span>跳过目录（逗号分隔）</span>
+                  <span>跳过目录（使用 | 分隔）</span>
                   <input
-                    value={settings.media_wall.skip_directories.join(', ')}
-                    onChange={(event) => updateField(['media_wall', 'skip_directories'], event.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+                    value={skipDirectoriesInput}
+                    onChange={(event) => {
+                      const rawValue = event.target.value;
+                      setSkipDirectoriesInput(rawValue);
+                      updateField(
+                        ['media_wall', 'skip_directories'],
+                        rawValue.split('|').map((item) => item.trim()).filter(Boolean),
+                      );
+                    }}
                   />
                 </label>
               </section>

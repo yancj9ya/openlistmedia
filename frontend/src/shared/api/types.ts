@@ -106,6 +106,9 @@ export interface RefreshResponseDto {
   item_count: number;
   failed_path_count: number;
   cache_hit: boolean;
+  media_id?: number | null;
+  media_path?: string | null;
+  openlist_refreshed?: boolean;
 }
 
 export interface AccessLoginResponseDto {

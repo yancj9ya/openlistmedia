@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toDetailTitle } from '../entities/media/model';
 import { useMediaDetail } from '../features/media-browser/use-media-detail';
 import { ApiClientError } from '../shared/api/client';
@@ -15,6 +15,7 @@ function formatEpisodeLabel(index: number) {
 export function MediaDetailPage() {
   const { mediaId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const backTo = (location.state as { from?: string } | null)?.from || '/media';
   const { data, loading, error, reload } = useMediaDetail(mediaId ? Number(mediaId) : null);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
@@ -90,9 +91,21 @@ export function MediaDetailPage() {
     try {
       setRefreshingDetail(true);
       setActionMessage(null);
-      await refreshMediaItem(mediaPath);
+      const refreshed = await refreshMediaItem(mediaPath);
+      if (refreshed.media_id && String(refreshed.media_id) !== String(mediaId || '')) {
+        navigate(`/media/${refreshed.media_id}`, {
+          replace: true,
+          state: { from: backTo },
+        });
+        setActionMessage('当前详情已刷新，并已跳转到最新媒体记录。');
+        return;
+      }
       reload();
-      setActionMessage('当前详情对应媒体目录已强制刷新。');
+      setActionMessage(
+        refreshed.openlist_refreshed
+          ? '当前详情对应媒体目录已强制刷新，并已同步 OpenList 目录。'
+          : '当前详情对应媒体目录已强制刷新。',
+      );
     } catch (reason) {
       if (reason instanceof ApiClientError) {
         setActionMessage(reason.message);

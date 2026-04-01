@@ -65,13 +65,31 @@ class MediaWallService:
 
     def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = load_config()
+        previous_skip_directories = self._normalize_skip_directories(
+            ((current.get("media_wall") or {}).get("skip_directories"))
+        )
         merged = self._deep_merge(current, payload)
+
+        media_wall = merged.get("media_wall") or {}
+        normalized_skip_directories = self._normalize_skip_directories(
+            media_wall.get("skip_directories")
+        )
+        media_wall["skip_directories"] = normalized_skip_directories
+        merged["media_wall"] = media_wall
+
         save_config(merged)
+
+        self.config.media_wall.skip_directories = normalized_skip_directories
+        self.scanner.config.skip_directories = normalized_skip_directories
+
+        if normalized_skip_directories != previous_skip_directories:
+            self.db.clear_all_cache()
+
         return merged
 
     def _restart_process(self) -> None:
         time.sleep(0.5)
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+        os.execv(sys.executable, [sys.executable, "-m", "backend.main"])
 
     def restart_backend(self) -> dict[str, Any]:
         threading.Thread(target=self._restart_process, daemon=True).start()
@@ -156,7 +174,7 @@ class MediaWallService:
 
     def refresh_category(self, category_path: str) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(category_path)
-        payload = self.scanner.scan_category(normalized_path)
+        payload = self.scanner.scan_category(normalized_path, refresh=True)
         self.db.upsert_category_cache(
             category_path=normalized_path,
             category_name=payload["category_name"],
@@ -168,12 +186,18 @@ class MediaWallService:
 
     def refresh_media_item(self, media_path: str) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(media_path)
-        payload = self.scanner.scan_media_item(normalized_path)
+        payload = self.scanner.scan_media_item(normalized_path, refresh=True)
         self.db.replace_media_item(
             category_path=payload["category_path"],
             media_path=normalized_path,
             item=payload["item"],
         )
+        refreshed_item = self.db.get_media_item_by_path(
+            payload["category_path"],
+            str(payload["item"].get("openlist_path") or normalized_path),
+        )
+        payload["media_id"] = refreshed_item.get("db_id") if refreshed_item else None
+        payload["media_path"] = payload["item"].get("openlist_path") or normalized_path
         payload["cache_hit"] = False
         payload["stats"] = {
             "item_count": 1,
@@ -292,6 +316,17 @@ class MediaWallService:
         if not category_path:
             return None
         return OpenListScanner.normalize_path(category_path)
+
+    def _normalize_skip_directories(self, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        text = str(value).strip()
+        if not text:
+            return []
+        normalized = text.replace("|", ",")
+        return [item.strip() for item in normalized.split(",") if item.strip()]
 
     def _deep_merge(
         self, current: dict[str, Any], payload: dict[str, Any]

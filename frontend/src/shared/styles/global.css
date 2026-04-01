@@ -228,7 +228,81 @@ button {
 }
 
 .settings-panel {
+  width: min(100%, 760px);
   max-width: 760px;
+}
+
+.access-gate-layout {
+  min-height: calc(100vh - 64px);
+  display: grid;
+  place-items: center;
+  padding: 32px 0;
+}
+
+.access-gate-panel {
+  width: min(100%, 820px);
+  padding: 24px;
+}
+
+.access-gate-form {
+  margin-top: 28px;
+  gap: 20px;
+}
+
+.access-gate-label {
+  display: grid;
+  gap: 10px;
+}
+
+.access-gate-label span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #dbe7ff;
+}
+
+.access-gate-input {
+  width: 100%;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(129, 140, 248, 0.24);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(10, 14, 23, 0.96) 100%);
+  color: #f8fafc;
+  padding: 0 16px;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.access-gate-input::placeholder {
+  color: #6b7a99;
+}
+
+.access-gate-input:focus {
+  border-color: rgba(99, 102, 241, 0.72);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.18), 0 16px 32px rgba(37, 99, 235, 0.18);
+}
+
+.access-gate-submit-row {
+  justify-content: flex-start;
+}
+
+.access-gate-submit-button {
+  min-width: 136px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #3b82f6 0%, #4f46e5 100%);
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.28);
+}
+
+.access-gate-submit-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.34);
+}
+
+.access-gate-error {
+  margin-top: 18px;
+  padding: 16px 18px;
 }
 
 .media-browser-hero {
@@ -421,6 +495,7 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 
 .media-card-tags {
@@ -736,6 +811,16 @@ button:disabled {
 @media (max-width: 900px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .access-gate-layout {
+    min-height: calc(100vh - 32px);
+    padding: 12px 0;
+  }
+
+  .access-gate-panel {
+    width: 100%;
+    padding: 20px;
   }
 
   .detail-page {

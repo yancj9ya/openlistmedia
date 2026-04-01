@@ -233,6 +233,7 @@ def _string_list(value: Any) -> list[str]:
     text = str(value).strip()
     if not text:
         return []
-    if "," in text:
-        return [item.strip() for item in text.split(",") if item.strip()]
-    return [text]
+    normalized = text.replace("|", ",")
+    if "," in normalized:
+        return [item.strip() for item in normalized.split(",") if item.strip()]
+    return [normalized]

@@ -22,10 +22,9 @@ export function MediaCard({ item }: MediaCardProps) {
         </div>
       </Link>
       <div className="chip-row media-card-tags">
-        <span className="chip">{model.typeLabel}</span>
+        <span className="chip">{model.categoryLabel}</span>
         <span className="chip">{model.yearLabel}</span>
         <span className="chip">{model.ratingLabel}</span>
-        <span className="chip">{model.categoryLabel}</span>
       </div>
       <h3 className="media-card-title" title={model.title}>{model.title}</h3>
     </article>

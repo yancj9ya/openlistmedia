@@ -284,6 +284,12 @@ class MediaWallDB:
             payload=cached,
         )
 
+    def clear_all_cache(self) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM media_items")
+            conn.execute("DELETE FROM category_cache")
+            conn.commit()
+
     def cache_is_fresh(self, category_path: str, ttl_seconds: int) -> bool:
         with self._connect() as conn:
             row = conn.execute(
@@ -379,6 +385,28 @@ class MediaWallDB:
             row = conn.execute(
                 "SELECT id, category_path, payload_json, updated_at FROM media_items WHERE id = ?",
                 (media_id,),
+            ).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload_json"])
+        payload["updated_at"] = row["updated_at"]
+        payload["db_id"] = row["id"]
+        payload["category_path"] = row["category_path"]
+        return payload
+
+    def get_media_item_by_path(
+        self, category_path: str, media_path: str
+    ) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, category_path, payload_json, updated_at
+                FROM media_items
+                WHERE category_path = ? AND media_path = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (category_path, media_path),
             ).fetchone()
         if not row:
             return None

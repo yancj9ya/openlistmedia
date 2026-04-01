@@ -57,7 +57,9 @@ class OpenListScanner:
                 "entries": self._list_categories(client, root),
             }
 
-    def scan_category(self, category_path: str) -> dict[str, Any]:
+    def scan_category(
+        self, category_path: str, *, refresh: bool = False
+    ) -> dict[str, Any]:
         category_path = self.normalize_path(category_path)
         category_name = (
             category_path.rstrip("/").split("/")[-1] if category_path != "/" else "/"
@@ -76,7 +78,9 @@ class OpenListScanner:
                     self.tmdb_image_base_url = tmdb_client.configuration_details()[
                         "images"
                     ]["secure_base_url"]
-                items = self._scan_category_items(openlist, tmdb_client, category_path)
+                items = self._scan_category_items(
+                    openlist, tmdb_client, category_path, refresh=refresh
+                )
             finally:
                 if tmdb_client:
                     tmdb_client.close()
@@ -94,11 +98,14 @@ class OpenListScanner:
                 "episode_count": sum(item.get("episode_count", 0) for item in items),
                 "failed_path_count": len(self.failed_paths),
             },
+            "openlist_refreshed": refresh,
         }
         self._save_tmdb_cache()
         return payload
 
-    def scan_media_item(self, media_path: str) -> dict[str, Any]:
+    def scan_media_item(
+        self, media_path: str, *, refresh: bool = False
+    ) -> dict[str, Any]:
         media_path = self.normalize_path(media_path)
         media_name = media_path.rstrip("/").split("/")[-1] if media_path != "/" else "/"
         media_match = MEDIA_PATTERN.match(media_name)
@@ -127,6 +134,7 @@ class OpenListScanner:
                     media_path,
                     [category_path.rstrip("/").split("/")[-1]],
                     media_match,
+                    refresh=refresh,
                 )
             finally:
                 if tmdb_client:
@@ -140,6 +148,7 @@ class OpenListScanner:
             "media_path": media_path,
             "media_name": media_name,
             "item": item,
+            "openlist_refreshed": refresh,
         }
 
     def _list_categories(
@@ -184,11 +193,16 @@ class OpenListScanner:
         return category_count, media_count
 
     def _scan_category_items(
-        self, client: OpenListClient, tmdb_client: TMDbClient | None, category_path: str
+        self,
+        client: OpenListClient,
+        tmdb_client: TMDbClient | None,
+        category_path: str,
+        *,
+        refresh: bool = False,
     ) -> list[dict[str, Any]]:
         self.failed_paths = []
         items: list[dict[str, Any]] = []
-        for entry in self._list_dir(client, category_path):
+        for entry in self._list_dir(client, category_path, refresh=refresh):
             if not self._is_dir(entry):
                 continue
             name = entry["name"]
@@ -204,6 +218,7 @@ class OpenListScanner:
                         path,
                         [category_path.rstrip("/").split("/")[-1]],
                         media_match,
+                        refresh=refresh,
                     )
                 )
         return items
@@ -215,11 +230,13 @@ class OpenListScanner:
         media_path: str,
         category_parts: list[str],
         media_match: re.Match[str],
+        *,
+        refresh: bool = False,
     ) -> dict[str, Any]:
         title = media_match.group("title").strip()
         year = int(media_match.group("year"))
         tmdb_id = int(media_match.group("tmdb_id"))
-        top_level_entries = self._list_dir(client, media_path)
+        top_level_entries = self._list_dir(client, media_path, refresh=refresh)
         files: list[dict[str, Any]] = []
         seasons: dict[int, dict[str, Any]] = {}
         for entry in top_level_entries:
@@ -229,7 +246,9 @@ class OpenListScanner:
                 season_match = SEASON_PATTERN.match(name)
                 if season_match:
                     season_number = int(season_match.group("number"))
-                    season_files = self._scan_files_recursive(client, path)
+                    season_files = self._scan_files_recursive(
+                        client, path, refresh=refresh
+                    )
                     seasons[season_number] = {
                         "season_number": season_number,
                         "name": name,
@@ -238,7 +257,9 @@ class OpenListScanner:
                     }
                     files.extend(season_files)
                 else:
-                    files.extend(self._scan_files_recursive(client, path))
+                    files.extend(
+                        self._scan_files_recursive(client, path, refresh=refresh)
+                    )
             elif self._is_video(name):
                 files.append(self._make_file_entry(entry, media_path))
 
@@ -298,11 +319,11 @@ class OpenListScanner:
         }
 
     def _scan_files_recursive(
-        self, client: OpenListClient, current_path: str
+        self, client: OpenListClient, current_path: str, *, refresh: bool = False
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:
-            entries = self._list_dir(client, current_path)
+            entries = self._list_dir(client, current_path, refresh=refresh)
         except OpenListHTTPError as exc:
             self._handle_scan_error(current_path, exc)
             return results
@@ -310,7 +331,9 @@ class OpenListScanner:
             name = entry["name"]
             path = self._join_path(current_path, name)
             if self._is_dir(entry):
-                results.extend(self._scan_files_recursive(client, path))
+                results.extend(
+                    self._scan_files_recursive(client, path, refresh=refresh)
+                )
             elif self._is_video(name):
                 results.append(self._make_file_entry(entry, current_path))
         return results
@@ -393,11 +416,13 @@ class OpenListScanner:
         else:
             client.login(self.config.openlist_username, self.config.openlist_password)
 
-    def _list_dir(self, client: OpenListClient, path: str) -> list[dict[str, Any]]:
+    def _list_dir(
+        self, client: OpenListClient, path: str, *, refresh: bool = False
+    ) -> list[dict[str, Any]]:
         last_error: OpenListHTTPError | None = None
         for attempt in range(1, self.config.list_retry_count + 2):
             try:
-                payload = client.list_dir(path)
+                payload = client.list_dir(path, refresh=refresh)
                 if isinstance(payload, dict) and isinstance(
                     payload.get("content"), list
                 ):

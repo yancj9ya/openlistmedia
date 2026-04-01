@@ -1,9 +1,7 @@
 version: '3.9'
 services:
   openlistmedia:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/yancj9ya/openlistmedia:latest
     container_name: openlistmedia
     ports:
       - "8000:8000"

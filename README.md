@@ -74,12 +74,13 @@ copy config.example.yml config.yml
 启动方式：
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 说明：
 
-- 容器会先构建 React 前端，再由同一个 Python 容器同时提供前端静态资源与后端 API。
+- 当前 [`docker-compose.yml`](docker-compose.yml) 面向服务器拉取镜像，直接使用 `ghcr.io/yancj9ya/openlistmedia:latest`。
+- 容器内已同时提供前端静态资源与后端 API。
 - 对外默认暴露端口 `8000`，对应 [`docker-compose.yml`](docker-compose.yml:8)。
 - 本地真实配置文件 [`config.yml`](config.yml) 已被 [`.gitignore`](.gitignore) 忽略，不建议提交到 Git。
 - 建议把模板配置维护在 [`config.example.yml`](config.example.yml) 中。
@@ -92,7 +93,7 @@ docker compose up --build
 
 - 工作流文件：[`docker-image.yml`](.github/workflows/docker-image.yml)
 - 触发条件：`push` 到 `main` / `master`，以及手动触发
-- 推送目标：`ghcr.io/<你的 GitHub 用户名或组织名>/openlistmedia`
+- 推送目标：`ghcr.io/yancj9ya/openlistmedia`
 - 默认标签包括：分支名、提交 SHA、默认分支上的 `latest`
 
 使用前提：
@@ -102,9 +103,9 @@ docker compose up --build
 - 工作流默认使用 [`GITHUB_TOKEN`](.github/workflows/docker-image.yml) 登录 `ghcr.io`
 
 镜像地址示例：
-
 ```text
-ghcr.io/<owner>/openlistmedia:latest
+ghcr.io/yancj9ya/openlistmedia:latest
+```
 ```
 
 ### MVP 已落地与预留项

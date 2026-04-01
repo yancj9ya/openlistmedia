@@ -117,6 +117,9 @@ class MediaRoutes:
                         "failed_path_count", 0
                     ),
                     "cache_hit": refreshed.get("cache_hit", False),
+                    "media_id": refreshed.get("media_id"),
+                    "media_path": refreshed.get("media_path"),
+                    "openlist_refreshed": refreshed.get("openlist_refreshed", False),
                 }
             )
         category_path = str(payload.get("category_path") or "").strip()
