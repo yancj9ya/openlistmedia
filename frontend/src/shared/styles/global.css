@@ -592,9 +592,26 @@ button:disabled {
 }
 
 .detail-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   justify-content: flex-start;
 }
 
+.detail-player-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detail-player-button,
 .detail-refresh-button {
   min-height: 40px;
   padding: 0 16px;
@@ -603,6 +620,18 @@ button:disabled {
   background: rgba(15, 23, 42, 0.58);
   color: #ffffff;
   backdrop-filter: blur(8px);
+}
+
+.detail-player-button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.detail-player-button.active {
+  background: rgba(37, 99, 235, 0.78);
+  border-color: rgba(96, 165, 250, 0.72);
 }
 
 .detail-back-button {
@@ -740,6 +769,7 @@ button:disabled {
 .detail-episode-button.loading {
   background: rgba(37, 99, 235, 0.4);
 }
+
 
 .state-card {
   padding: 32px;

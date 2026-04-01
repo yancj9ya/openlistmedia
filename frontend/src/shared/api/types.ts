@@ -60,14 +60,12 @@ export interface MediaFileDto {
   name: string;
   path: string;
   openlist_url?: string | null;
-  direct_url?: string | null;
-  mpv_url?: string | null;
+  playable_url?: string | null;
 }
 
 export interface PlayLinkDto {
   path: string;
-  direct_url?: string | null;
-  mpv_url?: string | null;
+  playable_url?: string | null;
 }
 
 export interface MediaSeasonDto {
@@ -81,8 +79,7 @@ export interface MediaDetailDto extends MediaListItemDto {
   file_count: number;
   season_count: number;
   episode_count: number;
-  direct_url?: string | null;
-  mpv_url?: string | null;
+  playable_url?: string | null;
   files: MediaFileDto[];
   seasons: MediaSeasonDto[];
 }

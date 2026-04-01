@@ -3,7 +3,15 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toDetailTitle } from '../entities/media/model';
 import { useMediaDetail } from '../features/media-browser/use-media-detail';
 import { ApiClientError } from '../shared/api/client';
-import { getPlayLinkWithCategoryRefresh, openMpv, refreshMediaItem } from '../shared/api/media-api';
+import {
+  getDefaultPlayer,
+  getPlayLinkWithCategoryRefresh,
+  openWithPlayer,
+  PLAYER_OPTIONS,
+  refreshMediaItem,
+  setDefaultPlayer,
+  type PlayerType,
+} from '../shared/api/media-api';
 import type { MediaFileDto } from '../shared/api/types';
 import { formatMediaType, formatRating } from '../shared/lib/format';
 import { AsyncState } from '../shared/ui/async-state';
@@ -21,6 +29,7 @@ export function MediaDetailPage() {
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
   const [refreshingDetail, setRefreshingDetail] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<PlayerType>(() => getDefaultPlayer());
   const mediaPath = data?.openlist_path || null;
   const seasonOptions = useMemo(() => {
     if (!data) {
@@ -63,18 +72,27 @@ export function MediaDetailPage() {
     });
   }, [seasonOptions]);
 
+  useEffect(() => {
+    setDefaultPlayer(selectedPlayer);
+  }, [selectedPlayer]);
+
   async function handlePlay(path: string) {
     try {
       setLoadingPath(path);
       setActionMessage(null);
       const payload = await getPlayLinkWithCategoryRefresh(path, mediaPath);
-      if (!payload.mpv_url) {
+      if (!payload.playable_url) {
         setActionMessage('文件路径可能已变化，已尝试刷新缓存，但仍未找到可播放地址。');
         return;
       }
-      openMpv(payload.mpv_url);
+      const message = await openWithPlayer(selectedPlayer, payload.playable_url);
+      setActionMessage(message);
     } catch (reason) {
       if (reason instanceof ApiClientError) {
+        setActionMessage(reason.message);
+        return;
+      }
+      if (reason instanceof Error) {
         setActionMessage(reason.message);
         return;
       }
@@ -166,7 +184,21 @@ export function MediaDetailPage() {
                 {actionMessage ? <p className="muted-text detail-action-message">{actionMessage}</p> : null}
               </div>
               <div className="file-item detail-files-card detail-files-scroll">
-                <strong>播放列表</strong>
+                <div className="detail-files-header">
+                  <strong>播放列表</strong>
+                  <div className="detail-player-switcher" role="group" aria-label="选择播放器">
+                    {PLAYER_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`detail-player-button${selectedPlayer === option.value ? ' active' : ''}`}
+                        onClick={() => setSelectedPlayer(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {seasonOptions.length > 1 ? (
                   <>
                     <div className="detail-season-tabs" role="tablist" aria-label="选择季">

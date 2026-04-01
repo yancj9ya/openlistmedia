@@ -144,33 +144,24 @@ class MediaWallService:
             files.append(
                 {
                     **file_item,
-                    "direct_url": None,
-                    "mpv_url": None,
+                    "playable_url": None,
                 }
             )
         item["files"] = files
-        item["direct_url"] = None
-        item["mpv_url"] = None
+        item["playable_url"] = None
         return item
 
     def get_play_link(self, path: str) -> dict[str, Any]:
-        direct_url = self.resolve_download_url(path)
+        playable_url = self.resolve_download_url(path)
         return {
             "path": OpenListScanner.normalize_path(path),
-            "direct_url": direct_url,
-            "mpv_url": self.build_mpv_url(direct_url) if direct_url else None,
+            "playable_url": playable_url,
         }
 
     def resolve_download_url(self, path: str) -> str | None:
         normalized_path = OpenListScanner.normalize_path(path)
         resolved_path, payload = self._get_fs_info_with_refresh(normalized_path)
         return self._build_download_url_from_payload(resolved_path, payload)
-
-    @staticmethod
-    def build_mpv_url(direct_url: str | None) -> str | None:
-        if not direct_url:
-            return None
-        return f"mpv://{direct_url}"
 
     def refresh_category(
         self, category_path: str, *, force_remote_refresh: bool = False
