@@ -172,9 +172,13 @@ class MediaWallService:
             return None
         return f"mpv://{direct_url}"
 
-    def refresh_category(self, category_path: str) -> dict[str, Any]:
+    def refresh_category(
+        self, category_path: str, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(category_path)
-        payload = self.scanner.scan_category(normalized_path, refresh=True)
+        payload = self.scanner.scan_category(
+            normalized_path, refresh=force_remote_refresh
+        )
         self.db.upsert_category_cache(
             category_path=normalized_path,
             category_name=payload["category_name"],
@@ -184,9 +188,13 @@ class MediaWallService:
         payload["cache_hit"] = False
         return payload
 
-    def refresh_media_item(self, media_path: str) -> dict[str, Any]:
+    def refresh_media_item(
+        self, media_path: str, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(media_path)
-        payload = self.scanner.scan_media_item(normalized_path, refresh=True)
+        payload = self.scanner.scan_media_item(
+            normalized_path, refresh=force_remote_refresh
+        )
         self.db.replace_media_item(
             category_path=payload["category_path"],
             media_path=normalized_path,

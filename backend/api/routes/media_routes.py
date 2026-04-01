@@ -107,7 +107,9 @@ class MediaRoutes:
             return error_response("forbidden", "Invalid admin token.", 403)
         media_path = str(payload.get("media_path") or "").strip()
         if media_path:
-            refreshed = self.service.refresh_media_item(media_path)
+            refreshed = self.service.refresh_media_item(
+                media_path, force_remote_refresh=True
+            )
             return 200, ok_response(
                 {
                     "category_path": refreshed.get("category_path"),
@@ -127,7 +129,9 @@ class MediaRoutes:
             return error_response(
                 "bad_request", "Missing field: category_path or media_path", 400
             )
-        refreshed = self.service.refresh_category(category_path)
+        refreshed = self.service.refresh_category(
+            category_path, force_remote_refresh=True
+        )
         return 200, ok_response(
             {
                 "category_path": refreshed.get("category_path"),
