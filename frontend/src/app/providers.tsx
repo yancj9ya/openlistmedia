@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 type AccessRole = 'admin' | 'visitor';
+type ThemeMode = 'dark' | 'light';
 
 interface AuthState {
   role: AccessRole;
@@ -11,11 +12,14 @@ interface AuthContextValue {
   auth: AuthState | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  theme: ThemeMode;
   login: (role: AccessRole, passcode: string) => void;
   logout: () => void;
+  setTheme: (theme: ThemeMode) => void;
 }
 
 export const AUTH_STORAGE_KEY = 'openlistmedia:auth';
+export const THEME_STORAGE_KEY = 'openlistmedia:theme';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -44,8 +48,17 @@ export function readStoredAuth(): AuthState | null {
   }
 }
 
+function readStoredTheme(): ThemeMode {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+  const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return raw === 'light' ? 'light' : 'dark';
+}
+
 export function AppProviders({ children }: PropsWithChildren) {
   const [auth, setAuth] = useState<AuthState | null>(() => readStoredAuth());
+  const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme());
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -58,15 +71,25 @@ export function AppProviders({ children }: PropsWithChildren) {
     window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
   }, [auth]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    window.document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       auth,
       isAuthenticated: Boolean(auth),
       isAdmin: auth?.role === 'admin',
+      theme,
       login: (role, passcode) => setAuth({ role, passcode }),
       logout: () => setAuth(null),
+      setTheme,
     }),
-    [auth],
+    [auth, theme],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

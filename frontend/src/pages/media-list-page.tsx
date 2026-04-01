@@ -12,7 +12,7 @@ import { AsyncState } from '../shared/ui/async-state';
 const DEFAULT_PAGE_SIZE = 20;
 
 export function MediaListPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, theme, setTheme } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryPath = searchParams.get('category_path') || undefined;
   const keyword = searchParams.get('keyword') || undefined;
@@ -165,11 +165,35 @@ export function MediaListPage() {
             );
           })}
         </div>
-        {isAdmin ? (
-          <Link to="/settings" className="media-settings-button" aria-label="打开设置页面">
-            设置
-          </Link>
-        ) : null}
+        <div className="media-sidebar-footer">
+          {isAdmin ? (
+            <Link to="/settings" className="media-settings-button" aria-label="打开设置页面">
+              设置
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            className="media-theme-toggle"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label="切换明暗主题"
+          >
+            {theme === 'dark' ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="media-theme-icon">
+                <path
+                  d="M12 4.75a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V5.5a.75.75 0 0 1 .75-.75Zm0 11a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Zm0 3.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V20a.75.75 0 0 1 .75-.75ZM6.343 6.343a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm9.194 9.194a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM4.75 12a.75.75 0 0 1 .75-.75H7a.75.75 0 0 1 0 1.5H5.5a.75.75 0 0 1-.75-.75Zm11.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H17a.75.75 0 0 1-.75-.75ZM7.403 15.537a.75.75 0 0 1 1.06 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06Zm10.254-9.194a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0Z"
+                  fill="currentColor"
+                />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="media-theme-icon">
+                <path
+                  d="M14.53 2.47a.75.75 0 0 1 .82.2 8.75 8.75 0 1 0 5.98 11.98.75.75 0 0 1 1.02.9A10.25 10.25 0 1 1 13.45 1.45a.75.75 0 0 1 1.08 1.02 7.25 7.25 0 0 0 0 10.26 7.25 7.25 0 0 0 10.26 0 .75.75 0 0 1 1.02 1.08A8.74 8.74 0 0 1 14.53 2.47Z"
+                  fill="currentColor"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
       </aside>
       <div className="media-main">
         <div className="panel media-browser-hero">

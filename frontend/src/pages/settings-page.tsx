@@ -5,6 +5,15 @@ import { getSettings, saveSettings } from '../shared/api/media-api';
 import type { AppSettingsDto } from '../shared/api/types';
 import { ApiClientError } from '../shared/api/client';
 
+type SettingsTabKey = 'openlist' | 'tmdb' | 'media-wall' | 'app';
+
+const SETTINGS_TABS: Array<{ key: SettingsTabKey; label: string; description: string }> = [
+  { key: 'openlist', label: 'OpenList', description: '资源站连接与认证' },
+  { key: 'tmdb', label: 'TMDb', description: '元数据与封面来源' },
+  { key: 'media-wall', label: '媒体墙', description: '目录、缓存与播放模板' },
+  { key: 'app', label: '前后端', description: '监听地址、站点与访问口令' },
+];
+
 export function SettingsPage() {
   const { isAdmin } = useAuth();
   const [settings, setSettings] = useState<AppSettingsDto | null>(null);
@@ -13,6 +22,7 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [skipDirectoriesInput, setSkipDirectoriesInput] = useState('');
+  const [activeTab, setActiveTab] = useState<SettingsTabKey>('openlist');
 
   useEffect(() => {
     if (!isAdmin) {
@@ -108,9 +118,44 @@ export function SettingsPage() {
         {message ? <div className="state-card">{message}</div> : null}
         {settings ? (
           <form className="settings-form" onSubmit={handleSubmit}>
-            <div className="settings-grid settings-grid-compact">
-              <section className="file-item settings-section settings-section-full">
-                <h3>OpenList</h3>
+            <div className="settings-overview-grid">
+              <div className="settings-overview-card">
+                <span className="settings-overview-label">OpenList</span>
+                <strong>{settings.openlist.base_url || '未配置'}</strong>
+              </div>
+              <div className="settings-overview-card">
+                <span className="settings-overview-label">媒体根目录</span>
+                <strong>{settings.media_wall.media_root || '未配置'}</strong>
+              </div>
+              <div className="settings-overview-card">
+                <span className="settings-overview-label">API</span>
+                <strong>{`${settings.backend.host}:${settings.backend.port}${settings.backend.api_prefix}`}</strong>
+              </div>
+            </div>
+            <div className="settings-tabs" role="tablist" aria-label="配置模块切换">
+              {SETTINGS_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.key}
+                  className={`settings-tab${activeTab === tab.key ? ' active' : ''}`}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  <span>{tab.label}</span>
+                  <small>{tab.description}</small>
+                </button>
+              ))}
+            </div>
+            <div className="settings-grid settings-grid-compact settings-grid-single">
+              {activeTab === 'openlist' ? (
+                <section className="file-item settings-section settings-section-full">
+                <div className="settings-section-heading">
+                  <div>
+                    <h3>OpenList</h3>
+                    <p className="muted-text">配置资源站连接与认证信息。</p>
+                  </div>
+                </div>
                 <div className="settings-fields-grid">
                   <label>
                     <span>Base URL</span>
@@ -129,9 +174,16 @@ export function SettingsPage() {
                     <input type="password" value={settings.openlist.password} onChange={(event) => updateField(['openlist', 'password'], event.target.value)} />
                   </label>
                 </div>
-              </section>
-              <section className="file-item settings-section">
-                <h3>TMDb</h3>
+                </section>
+              ) : null}
+              {activeTab === 'tmdb' ? (
+                <section className="file-item settings-section settings-section-full">
+                <div className="settings-section-heading">
+                  <div>
+                    <h3>TMDb</h3>
+                    <p className="muted-text">补充元数据、语言与封面来源。</p>
+                  </div>
+                </div>
                 <label>
                   <span>Read Access Token</span>
                   <input value={settings.tmdb.read_access_token} onChange={(event) => updateField(['tmdb', 'read_access_token'], event.target.value)} />
@@ -144,9 +196,16 @@ export function SettingsPage() {
                   <span>Language</span>
                   <input value={settings.tmdb.language} onChange={(event) => updateField(['tmdb', 'language'], event.target.value)} />
                 </label>
-              </section>
-              <section className="file-item settings-section">
-                <h3>媒体墙</h3>
+                </section>
+              ) : null}
+              {activeTab === 'media-wall' ? (
+                <section className="file-item settings-section settings-section-full">
+                <div className="settings-section-heading">
+                  <div>
+                    <h3>媒体墙</h3>
+                    <p className="muted-text">控制目录、缓存与公网播放模板。</p>
+                  </div>
+                </div>
                 <label>
                   <span>媒体根目录</span>
                   <input value={settings.media_wall.media_root} onChange={(event) => updateField(['media_wall', 'media_root'], event.target.value)} />
@@ -177,9 +236,16 @@ export function SettingsPage() {
                     }}
                   />
                 </label>
-              </section>
-              <section className="file-item settings-section">
-                <h3>前后端</h3>
+                </section>
+              ) : null}
+              {activeTab === 'app' ? (
+                <section className="file-item settings-section settings-section-full">
+                <div className="settings-section-heading">
+                  <div>
+                    <h3>前后端</h3>
+                    <p className="muted-text">后端监听、前端站点地址与访问口令。</p>
+                  </div>
+                </div>
                 <label>
                   <span>Backend Host</span>
                   <input value={settings.backend.host} onChange={(event) => updateField(['backend', 'host'], event.target.value)} />
@@ -204,7 +270,8 @@ export function SettingsPage() {
                   <span>访客口令</span>
                   <input value={settings.frontend.visitor_passcode} onChange={(event) => updateField(['frontend', 'visitor_passcode'], event.target.value)} />
                 </label>
-              </section>
+                </section>
+              ) : null}
             </div>
             <div className="action-row settings-submit-row">
               <button type="submit" disabled={saving}>
