@@ -320,6 +320,46 @@ button {
   margin-top: 4px;
 }
 
+.media-subcategory-toolbar {
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.media-subcategory-actions {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.media-subcategory-search {
+  display: flex;
+  flex: 0 1 320px;
+  min-width: min(100%, 240px);
+}
+
+.media-subcategory-search input {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 140, 248, 0.18);
+  background: rgba(10, 14, 23, 0.9);
+  color: #f8fafc;
+  padding: 0 16px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.media-subcategory-search input::placeholder {
+  color: #8ea0c6;
+}
+
+.media-subcategory-search input:focus {
+  border-color: rgba(99, 102, 241, 0.72);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.16);
+}
+
 .media-subcategory-refresh-message {
   margin-top: 10px;
 }
@@ -811,6 +851,12 @@ button:disabled {
 @media (max-width: 900px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .media-subcategory-toolbar,
+  .media-subcategory-actions,
+  .media-subcategory-search {
+    width: 100%;
   }
 
   .access-gate-layout {

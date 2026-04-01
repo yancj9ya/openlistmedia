@@ -13,13 +13,14 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export function MediaListPage() {
   const { isAdmin } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const categoryPath = searchParams.get('category_path') || undefined;
   const keyword = searchParams.get('keyword') || undefined;
   const type = searchParams.get('type') || undefined;
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MediaListItemDto[]>([]);
+  const [keywordInput, setKeywordInput] = useState(keyword || '');
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const pageSize = DEFAULT_PAGE_SIZE;
   const query = useMemo(
@@ -64,6 +65,10 @@ export function MediaListPage() {
     setPage(1);
     setItems([]);
   }, [categoryPath, keyword, type]);
+
+  useEffect(() => {
+    setKeywordInput(keyword || '');
+  }, [keyword]);
 
   useEffect(() => {
     if (!data?.items) {
@@ -126,6 +131,18 @@ export function MediaListPage() {
     }
   }
 
+  function handleKeywordSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextParams = new URLSearchParams(searchParams);
+    const trimmed = keywordInput.trim();
+    if (trimmed) {
+      nextParams.set('keyword', trimmed);
+    } else {
+      nextParams.delete('keyword');
+    }
+    setSearchParams(nextParams);
+  }
+
   return (
     <section className="media-shell">
       <aside className="media-sidebar panel">
@@ -156,35 +173,46 @@ export function MediaListPage() {
       </aside>
       <div className="media-main">
         <div className="panel media-browser-hero">
-          <div className="media-subcategory-row">
-            <button
-              type="button"
-              className="media-subcategory-refresh-button"
-              onClick={handleRefreshSecondaryCategory}
-              disabled={!currentSecondaryPath || refreshingCategory}
-            >
-              {refreshingCategory ? '刷新中...' : '刷新'}
-            </button>
-            {topLevelPath ? (
-              <Link
-                className={`media-subcategory-button${categoryPath === topLevelPath ? ' active' : ''}`}
-                to={`/media?category_path=${encodeURIComponent(topLevelPath)}`}
+          <div className="media-subcategory-row media-subcategory-toolbar">
+            <div className="media-subcategory-actions">
+              <button
+                type="button"
+                className="media-subcategory-refresh-button"
+                onClick={handleRefreshSecondaryCategory}
+                disabled={!currentSecondaryPath || refreshingCategory}
               >
-                全部
-              </Link>
-            ) : null}
-            {secondaryItems.map((item) => {
-              const active = categoryPath === item.path;
-              return (
+                {refreshingCategory ? '刷新中...' : '刷新'}
+              </button>
+              {topLevelPath ? (
                 <Link
-                  key={item.path}
-                  className={`media-subcategory-button${active ? ' active' : ''}`}
-                  to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                  className={`media-subcategory-button${categoryPath === topLevelPath ? ' active' : ''}`}
+                  to={`/media?category_path=${encodeURIComponent(topLevelPath)}`}
                 >
-                  {item.name}
+                  全部
                 </Link>
-              );
-            })}
+              ) : null}
+              {secondaryItems.map((item) => {
+                const active = categoryPath === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    className={`media-subcategory-button${active ? ' active' : ''}`}
+                    to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                  >
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </div>
+            <form className="media-subcategory-search" onSubmit={handleKeywordSubmit}>
+              <input
+                type="search"
+                value={keywordInput}
+                onChange={(event) => setKeywordInput(event.target.value)}
+                placeholder="搜索当前分类中的剧名"
+                aria-label="搜索当前分类中的剧名"
+              />
+            </form>
           </div>
           {refreshMessage ? <div className="muted-text media-subcategory-refresh-message">{refreshMessage}</div> : null}
           <div className="media-year-row">
