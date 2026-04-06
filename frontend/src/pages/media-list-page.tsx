@@ -4,6 +4,7 @@ import { useAuth } from '../app/providers';
 import { MediaCard } from '../entities/media/media-card';
 import { useCategoryTree } from '../features/media-browser/use-category-tree';
 import { useMediaList } from '../features/media-browser/use-media-list';
+import { useRecentPlays } from '../features/media-browser/use-recent-plays';
 import { ApiClientError } from '../shared/api/client';
 import { refreshCategory } from '../shared/api/media-api';
 import type { MediaListItemDto } from '../shared/api/types';
@@ -18,6 +19,7 @@ export function MediaListPage() {
   const keyword = searchParams.get('keyword') || undefined;
   const type = searchParams.get('type') || undefined;
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [showRecentPlays, setShowRecentPlays] = useState(() => !categoryPath && !keyword && !type);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MediaListItemDto[]>([]);
   const [keywordInput, setKeywordInput] = useState(keyword || '');
@@ -28,6 +30,7 @@ export function MediaListPage() {
     [categoryPath, keyword, page, pageSize, type],
   );
   const { data, loading, error, reload: reloadMediaList } = useMediaList(query);
+  const { data: recentPlays, loading: recentLoading, error: recentError } = useRecentPlays();
   const { data: rootCategories } = useCategoryTree();
   const topLevelPath = useMemo(() => {
     const rootChildren = rootCategories?.children || [];
@@ -57,6 +60,29 @@ export function MediaListPage() {
     }
     return items.filter((item) => Number(item.year || 0) === selectedYear);
   }, [items, selectedYear]);
+  const recentPlayItems = useMemo<MediaListItemDto[]>(
+    () =>
+      (recentPlays || []).map((item) => ({
+        id: item.media_id,
+        title: item.media_title,
+        type: item.media_type,
+        poster_url: item.poster_url,
+        display_title: null,
+        original_title: null,
+        year: null,
+        overview: null,
+        backdrop_url: null,
+        release_date: null,
+        category_label: '最近播放',
+        category_path: null,
+        openlist_path: null,
+        openlist_url: null,
+        updated_at: String(item.played_at),
+        vote_average: item.vote_average ?? null,
+        tmdb_id: null,
+      })),
+    [recentPlays],
+  );
   const hasNext = Boolean(data?.pagination.has_next);
   const currentSecondaryPath = categoryPath && categoryPath !== topLevelPath ? categoryPath : null;
 
@@ -64,6 +90,12 @@ export function MediaListPage() {
     setSelectedYear(null);
     setPage(1);
     setItems([]);
+  }, [categoryPath, keyword, type]);
+
+  useEffect(() => {
+    if (categoryPath || keyword || type) {
+      setShowRecentPlays(false);
+    }
   }, [categoryPath, keyword, type]);
 
   useEffect(() => {
@@ -152,13 +184,21 @@ export function MediaListPage() {
         <p className="media-sidebar-subtitle">openlist</p>
         <div className="media-sidebar-divider" aria-hidden="true" />
         <div className="media-sidebar-nav">
+          <button
+            type="button"
+            className={`media-sidebar-link${showRecentPlays ? ' active' : ''}`}
+            onClick={() => setShowRecentPlays((current) => !current)}
+          >
+            <span>最近播放</span>
+          </button>
           {(rootCategories?.children || []).map((item) => {
             const active = topLevelPath === item.path;
             return (
               <Link
                 key={item.path}
-                className={`media-sidebar-link${active ? ' active' : ''}`}
+                className={`media-sidebar-link${active && !showRecentPlays ? ' active' : ''}`}
                 to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                onClick={() => setShowRecentPlays(false)}
               >
                 <span>{item.name}</span>
               </Link>
@@ -196,80 +236,103 @@ export function MediaListPage() {
         </div>
       </aside>
       <div className="media-main">
-        <div className="panel media-browser-hero">
-          <div className="media-subcategory-row media-subcategory-toolbar">
-            <div className="media-subcategory-actions">
-              <button
-                type="button"
-                className="media-subcategory-refresh-button"
-                onClick={handleRefreshSecondaryCategory}
-                disabled={!currentSecondaryPath || refreshingCategory}
-              >
-                {refreshingCategory ? '刷新中...' : '刷新'}
-              </button>
-              {topLevelPath ? (
-                <Link
-                  className={`media-subcategory-button${categoryPath === topLevelPath ? ' active' : ''}`}
-                  to={`/media?category_path=${encodeURIComponent(topLevelPath)}`}
+        {showRecentPlays ? (
+          <div className="panel media-browser-hero">
+            <p className="eyebrow">播放历史</p>
+            <h2 className="page-title">最近播放</h2>
+            <p className="muted-text">这里展示最近打开过的媒体，方便你快速回到上次观看的位置。</p>
+          </div>
+        ) : (
+          <div className="panel media-browser-hero">
+            <div className="media-subcategory-row media-subcategory-toolbar">
+              <div className="media-subcategory-actions">
+                <button
+                  type="button"
+                  className="media-subcategory-refresh-button"
+                  onClick={handleRefreshSecondaryCategory}
+                  disabled={!currentSecondaryPath || refreshingCategory}
                 >
-                  全部
-                </Link>
-              ) : null}
-              {secondaryItems.map((item) => {
-                const active = categoryPath === item.path;
-                return (
+                  {refreshingCategory ? '刷新中...' : '刷新'}
+                </button>
+                {topLevelPath ? (
                   <Link
-                    key={item.path}
-                    className={`media-subcategory-button${active ? ' active' : ''}`}
-                    to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                    className={`media-subcategory-button${categoryPath === topLevelPath ? ' active' : ''}`}
+                    to={`/media?category_path=${encodeURIComponent(topLevelPath)}`}
                   >
-                    {item.name}
+                    全部
                   </Link>
-                );
-              })}
+                ) : null}
+                {secondaryItems.map((item) => {
+                  const active = categoryPath === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      className={`media-subcategory-button${active ? ' active' : ''}`}
+                      to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                    >
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </div>
+              <form className="media-subcategory-search" onSubmit={handleKeywordSubmit}>
+                <input
+                  type="search"
+                  value={keywordInput}
+                  onChange={(event) => setKeywordInput(event.target.value)}
+                  placeholder="搜索当前分类中的剧名"
+                  aria-label="搜索当前分类中的剧名"
+                />
+              </form>
             </div>
-            <form className="media-subcategory-search" onSubmit={handleKeywordSubmit}>
-              <input
-                type="search"
-                value={keywordInput}
-                onChange={(event) => setKeywordInput(event.target.value)}
-                placeholder="搜索当前分类中的剧名"
-                aria-label="搜索当前分类中的剧名"
-              />
-            </form>
-          </div>
-          {refreshMessage ? <div className="muted-text media-subcategory-refresh-message">{refreshMessage}</div> : null}
-          <div className="media-year-row">
-            <button
-              type="button"
-              className={`media-year-button${!selectedYear ? ' active' : ''}`}
-              onClick={() => setSelectedYear(null)}
-            >
-              全部年份
-            </button>
-            {years.map((itemYear) => (
+            {refreshMessage ? <div className="muted-text media-subcategory-refresh-message">{refreshMessage}</div> : null}
+            <div className="media-year-row">
               <button
                 type="button"
-                key={itemYear}
-                className={`media-year-button${selectedYear === itemYear ? ' active' : ''}`}
-                onClick={() => setSelectedYear(itemYear)}
+                className={`media-year-button${!selectedYear ? ' active' : ''}`}
+                onClick={() => setSelectedYear(null)}
               >
-                {itemYear}
+                全部年份
               </button>
-            ))}
+              {years.map((itemYear) => (
+                <button
+                  type="button"
+                  key={itemYear}
+                  className={`media-year-button${selectedYear === itemYear ? ' active' : ''}`}
+                  onClick={() => setSelectedYear(itemYear)}
+                >
+                  {itemYear}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <div className="panel media-browser-content">
-          <AsyncState loading={loading && items.length === 0} error={error} empty={!loading && !error && !items.length} emptyText="没有匹配到媒体数据。">
-            <>
+          {showRecentPlays ? (
+            <AsyncState
+              loading={recentLoading}
+              error={recentError?.message}
+              empty={!recentLoading && !recentError && !recentPlayItems.length}
+              emptyText="暂无播放记录。"
+            >
               <div className="media-grid media-grid-emby">
-                {visibleItems.map((item) => (
-                  <MediaCard key={item.id} item={item} />
+                {recentPlayItems.map((item) => (
+                  <MediaCard key={`${item.id}-recent`} item={item} />
                 ))}
               </div>
-              {hasNext ? <div className="media-load-trigger" ref={loadMoreRef}>正在加载更多...</div> : null}
-            </>
-          </AsyncState>
+            </AsyncState>
+          ) : (
+            <AsyncState loading={loading && items.length === 0} error={error} empty={!loading && !error && !items.length} emptyText="没有匹配到媒体数据。">
+              <>
+                <div className="media-grid media-grid-emby">
+                  {visibleItems.map((item) => (
+                    <MediaCard key={item.id} item={item} />
+                  ))}
+                </div>
+                {hasNext ? <div className="media-load-trigger" ref={loadMoreRef}>正在加载更多...</div> : null}
+              </>
+            </AsyncState>
+          )}
         </div>
       </div>
     </section>

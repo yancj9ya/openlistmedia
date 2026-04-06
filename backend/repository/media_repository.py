@@ -116,6 +116,35 @@ class MediaWallDB:
                 ON media_items(tmdb_id)
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS play_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    media_id INTEGER NOT NULL,
+                    media_title TEXT NOT NULL,
+                    media_type TEXT,
+                    tmdb_id INTEGER,
+                    release_year INTEGER,
+                    poster_url TEXT,
+                    played_at INTEGER NOT NULL,
+                    FOREIGN KEY(media_id) REFERENCES media_items(id) ON DELETE CASCADE
+                )
+                """
+            )
+            self._ensure_column(conn, "play_history", "tmdb_id", "INTEGER")
+            self._ensure_column(conn, "play_history", "release_year", "INTEGER")
+            conn.execute(
+                """
+                DELETE FROM play_history
+                WHERE tmdb_id IS NULL
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_play_history_played_at
+                ON play_history(played_at DESC)
+                """
+            )
             conn.commit()
 
     def _ensure_column(
@@ -393,6 +422,115 @@ class MediaWallDB:
         payload["db_id"] = row["id"]
         payload["category_path"] = row["category_path"]
         return payload
+
+    def record_play_history(
+        self,
+        media_id: int,
+        media_title: str,
+        media_type: str | None = None,
+        poster_url: str | None = None,
+        tmdb_id: int | None = None,
+        release_year: int | None = None,
+    ) -> None:
+        played_at = int(time.time())
+        with self._connect() as conn:
+            if tmdb_id is not None:
+                conn.execute(
+                    """
+                    DELETE FROM play_history
+                    WHERE tmdb_id = ?
+                       OR (
+                            tmdb_id IS NULL
+                        AND media_title = ?
+                        AND COALESCE(media_type, '') = COALESCE(?, '')
+                        AND (
+                              release_year = ?
+                           OR (release_year IS NULL AND ? IS NULL)
+                        )
+                       )
+                    """,
+                    (tmdb_id, media_title, media_type, release_year, release_year),
+                )
+            else:
+                conn.execute(
+                    """
+                    DELETE FROM play_history
+                    WHERE media_title = ?
+                      AND COALESCE(media_type, '') = COALESCE(?, '')
+                      AND (
+                        release_year = ?
+                        OR (release_year IS NULL AND ? IS NULL)
+                      )
+                    """,
+                    (media_title, media_type, release_year, release_year),
+                )
+            conn.execute(
+                """
+                INSERT INTO play_history(media_id, media_title, media_type, tmdb_id, release_year, poster_url, played_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    media_id,
+                    media_title,
+                    media_type,
+                    tmdb_id,
+                    release_year,
+                    poster_url,
+                    played_at,
+                ),
+            )
+            conn.commit()
+
+    def get_recent_play_history(self, limit: int = 10) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT recent.id,
+                       recent.media_id,
+                       recent.media_title,
+                       recent.media_type,
+                       recent.effective_tmdb_id AS tmdb_id,
+                       recent.effective_release_year AS release_year,
+                       recent.poster_url,
+                       recent.played_at,
+                       media_items.vote_average
+                FROM (
+                    SELECT ph.id,
+                           ph.media_id,
+                           ph.media_title,
+                           ph.media_type,
+                           COALESCE(ph.tmdb_id, mi.tmdb_id) AS effective_tmdb_id,
+                           COALESCE(ph.release_year, mi.year) AS effective_release_year,
+                           ph.poster_url,
+                           ph.played_at
+                    FROM play_history ph
+                    LEFT JOIN media_items mi ON mi.id = ph.media_id
+                    INNER JOIN (
+                        SELECT COALESCE(
+                                   CAST(COALESCE(ph2.tmdb_id, mi2.tmdb_id) AS TEXT),
+                                   COALESCE(ph2.media_type, '') || '|' || ph2.media_title || '|' || COALESCE(CAST(COALESCE(ph2.release_year, mi2.year) AS TEXT), '')
+                               ) AS identity_key,
+                               MAX(ph2.played_at) AS latest_played_at
+                        FROM play_history ph2
+                        LEFT JOIN media_items mi2 ON mi2.id = ph2.media_id
+                        GROUP BY COALESCE(
+                                   CAST(COALESCE(ph2.tmdb_id, mi2.tmdb_id) AS TEXT),
+                                   COALESCE(ph2.media_type, '') || '|' || ph2.media_title || '|' || COALESCE(CAST(COALESCE(ph2.release_year, mi2.year) AS TEXT), '')
+                               )
+                    ) latest
+                      ON latest.identity_key = COALESCE(
+                           CAST(COALESCE(ph.tmdb_id, mi.tmdb_id) AS TEXT),
+                           COALESCE(ph.media_type, '') || '|' || ph.media_title || '|' || COALESCE(CAST(COALESCE(ph.release_year, mi.year) AS TEXT), '')
+                      )
+                     AND latest.latest_played_at = ph.played_at
+                ) recent
+                LEFT JOIN media_items ON media_items.id = recent.media_id
+                ORDER BY recent.played_at DESC, recent.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_media_item_by_path(
         self, category_path: str, media_path: str

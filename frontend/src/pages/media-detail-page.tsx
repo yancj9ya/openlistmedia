@@ -8,6 +8,7 @@ import {
   getPlayLinkWithCategoryRefresh,
   openWithPlayer,
   PLAYER_OPTIONS,
+  recordPlayHistory,
   refreshMediaItem,
   setDefaultPlayer,
   type PlayerType,
@@ -75,17 +76,20 @@ export function MediaDetailPage() {
   useEffect(() => {
     setDefaultPlayer(selectedPlayer);
   }, [selectedPlayer]);
-
-  async function handlePlay(path: string) {
-    try {
-      setLoadingPath(path);
-      setActionMessage(null);
-      const payload = await getPlayLinkWithCategoryRefresh(path, mediaPath);
-      if (!payload.playable_url) {
-        setActionMessage('文件路径可能已变化，已尝试刷新缓存，但仍未找到可播放地址。');
-        return;
-      }
-      const message = await openWithPlayer(selectedPlayer, payload.playable_url);
+async function handlePlay(path: string) {
+  try {
+    setLoadingPath(path);
+    setActionMessage(null);
+    const payload = await getPlayLinkWithCategoryRefresh(path, mediaPath);
+    if (!payload.playable_url) {
+      setActionMessage('文件路径可能已变化，已尝试刷新缓存，但仍未找到可播放地址。');
+      return;
+    }
+    if (mediaId) {
+      recordPlayHistory(Number(mediaId));
+    }
+    const message = await openWithPlayer(selectedPlayer, payload.playable_url);
+    setActionMessage(message);
       setActionMessage(message);
     } catch (reason) {
       if (reason instanceof ApiClientError) {

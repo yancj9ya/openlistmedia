@@ -7,6 +7,7 @@ import type {
   MediaDetailDto,
   MediaListQuery,
   MediaListResponseDto,
+  PlayHistoryDto,
   PlayLinkDto,
   RefreshResponseDto,
 } from './types';
@@ -149,6 +150,21 @@ export function saveSettings(payload: AppSettingsDto) {
     headers: passcode ? { 'X-Access-Passcode': passcode } : undefined,
     body: JSON.stringify(payload),
   });
+}
+
+export function getRecentPlayHistory() {
+  return requestJson<PlayHistoryDto[]>('/recent-plays');
+}
+
+export async function recordPlayHistory(mediaId: number): Promise<void> {
+  try {
+    await requestJson('/record-play', {
+      method: 'POST',
+      body: JSON.stringify({ media_id: mediaId }),
+    });
+  } catch {
+    // 播放记录失败不影响用户体验，静默处理
+  }
 }
 
 export function loginWithPasscode(passcode: string) {

@@ -18,6 +18,7 @@ media_wall:
   item_url_template: http://127.0.0.1:5244/d{path}?sign={sign}
   database_path: media_wall.db
   cache_ttl_seconds: 86400
+  refresh_cron: ''
   list_retry_count: 2
   retry_delay_seconds: 1
   skip_failed_directories: true

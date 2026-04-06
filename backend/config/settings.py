@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from backend.scheduler import validate_cron_expression
 from config_loader import get_value, load_config as load_yaml_config
 
 
@@ -49,6 +50,7 @@ class MediaWallConfig:
     skip_failed_directories: bool
     database_path: Path
     cache_ttl_seconds: int
+    refresh_cron: str | None
     skip_directories: list[str]
 
 
@@ -199,6 +201,9 @@ def load_backend_config() -> BackendConfig:
             cache_ttl_seconds=int(
                 get_value(config, "media_wall", "cache_ttl_seconds", default=86400)
             ),
+            refresh_cron=_validated_cron(
+                get_value(config, "media_wall", "refresh_cron", default="")
+            ),
             skip_directories=_string_list(
                 get_value(config, "media_wall", "skip_directories", default=["热更"])
             ),
@@ -237,3 +242,11 @@ def _string_list(value: Any) -> list[str]:
     if "," in normalized:
         return [item.strip() for item in normalized.split(",") if item.strip()]
     return [normalized]
+
+
+def _validated_cron(value: Any) -> str | None:
+    text = _optional_string(value)
+    if not text:
+        return None
+    validate_cron_expression(text)
+    return text

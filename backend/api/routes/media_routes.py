@@ -78,9 +78,21 @@ class MediaRoutes:
             return 200, ok_response(
                 {"message": "Use POST /refresh with category_path or media_path."}
             )
+        if path == f"{self.api_prefix}/recent-plays":
+            payload = self.service.get_recent_play_history(limit=10)
+            return 200, ok_response(payload)
         return error_response("not_found", "Route not found.", 404)
 
     def handle_post(self, path: str, payload: dict, headers) -> tuple[int, dict]:
+        if path == f"{self.api_prefix}/record-play":
+            media_id = payload.get("media_id")
+            if not media_id:
+                return error_response("bad_request", "Missing field: media_id", 400)
+            try:
+                self.service.record_play_history(int(media_id))
+                return 200, ok_response({"recorded": True})
+            except (ValueError, TypeError):
+                return error_response("bad_request", "Invalid media_id", 400)
         if path == f"{self.api_prefix}/auth/login":
             passcode = str(payload.get("passcode") or "").strip()
             if not passcode:
@@ -98,7 +110,10 @@ class MediaRoutes:
             passcode = headers.get("X-Access-Passcode")
             if not self.service.is_admin_passcode(passcode):
                 return error_response("forbidden", "Admin passcode required.", 403)
-            saved = self.service.update_settings(payload)
+            try:
+                saved = self.service.update_settings(payload)
+            except ValueError as exc:
+                return error_response("bad_request", str(exc), 400)
             self.service.restart_backend()
             return 200, ok_response(saved, message="settings_saved_restart_requested")
         if path != f"{self.api_prefix}/refresh":

@@ -7,6 +7,7 @@ import time
 from pathlib import PurePosixPath
 from typing import Any
 
+from backend.scheduler import validate_cron_expression
 from openlist_sdk import OpenListClient
 from openlist_sdk.exceptions import OpenListAPIError, OpenListHTTPError
 
@@ -74,6 +75,12 @@ class MediaWallService:
         normalized_skip_directories = self._normalize_skip_directories(
             media_wall.get("skip_directories")
         )
+        refresh_cron = str(media_wall.get("refresh_cron") or "").strip()
+        if refresh_cron:
+            validate_cron_expression(refresh_cron)
+            media_wall["refresh_cron"] = refresh_cron
+        else:
+            media_wall["refresh_cron"] = ""
         media_wall["skip_directories"] = normalized_skip_directories
         merged["media_wall"] = media_wall
 
@@ -207,6 +214,61 @@ class MediaWallService:
         }
         return payload
 
+    def refresh_all_categories(
+        self, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
+        root_path = OpenListScanner.normalize_path(self.config.media_wall.media_root)
+        pending_paths = [root_path]
+        seen_paths: set[str] = set()
+        refreshed_paths: list[str] = []
+        failed_paths: list[dict[str, str]] = []
+
+        while pending_paths:
+            current_path = OpenListScanner.normalize_path(pending_paths.pop(0))
+            if current_path in seen_paths:
+                continue
+            seen_paths.add(current_path)
+
+            try:
+                tree = self.scanner.list_categories(
+                    current_path, refresh=force_remote_refresh
+                )
+                for entry in tree.get("entries", []):
+                    child_path = str(entry.get("path") or "").strip()
+                    if child_path:
+                        pending_paths.append(child_path)
+            except Exception as exc:
+                failed_paths.append(
+                    {
+                        "path": current_path,
+                        "stage": "list",
+                        "message": str(exc),
+                    }
+                )
+                continue
+
+            try:
+                self.refresh_category(
+                    current_path, force_remote_refresh=force_remote_refresh
+                )
+                refreshed_paths.append(current_path)
+            except Exception as exc:
+                failed_paths.append(
+                    {
+                        "path": current_path,
+                        "stage": "refresh",
+                        "message": str(exc),
+                    }
+                )
+
+        return {
+            "root_path": root_path,
+            "refreshed_count": len(refreshed_paths),
+            "failed_count": len(failed_paths),
+            "refreshed_paths": refreshed_paths,
+            "failed_paths": failed_paths,
+        }
+
     def _get_fs_info_with_refresh(
         self, normalized_path: str
     ) -> tuple[str, dict[str, Any] | None]:
@@ -337,3 +399,30 @@ class MediaWallService:
             else:
                 merged[key] = value
         return merged
+
+    def record_play_history(self, media_id: int) -> None:
+        media = self.db.get_media_item(media_id)
+        if media:
+            self.db.record_play_history(
+                media_id=media_id,
+                media_title=media.get("title", "Unknown"),
+                media_type=media.get("type"),
+                poster_url=media.get("poster_url"),
+                tmdb_id=int(media.get("tmdb_id")) if media.get("tmdb_id") is not None else None,
+                release_year=int(media.get("year")) if media.get("year") is not None else None,
+            )
+
+    def get_recent_play_history(self, limit: int = 10) -> list[dict[str, Any]]:
+        items = self.db.get_recent_play_history(limit)
+        normalized: list[dict[str, Any]] = []
+        for item in items:
+            vote_average = item.get("vote_average")
+            normalized.append(
+                {
+                    **item,
+                    "vote_average": float(vote_average)
+                    if vote_average is not None
+                    else None,
+                }
+            )
+        return normalized

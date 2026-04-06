@@ -219,6 +219,14 @@ export function SettingsPage() {
                   <input value={settings.media_wall.database_path} onChange={(event) => updateField(['media_wall', 'database_path'], event.target.value)} />
                 </label>
                 <label>
+                  <span>定时刷新 Cron</span>
+                  <input
+                    value={settings.media_wall.refresh_cron}
+                    placeholder="例如 0 3 * * *"
+                    onChange={(event) => updateField(['media_wall', 'refresh_cron'], event.target.value)}
+                  />
+                </label>
+                <label>
                   <span>公网播放 URL 模板</span>
                   <input value={settings.media_wall.item_url_template} onChange={(event) => updateField(['media_wall', 'item_url_template'], event.target.value)} />
                 </label>

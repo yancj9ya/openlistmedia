@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./config.yml:/app/config.yml:ro
+      - ./config.yml:/app/config.yml
       - ./media_wall.db:/app/media_wall.db
       - ./media_wall_site/data:/app/media_wall_site/data
     restart: unless-stopped

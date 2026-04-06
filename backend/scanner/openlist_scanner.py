@@ -45,7 +45,9 @@ class OpenListScanner:
         self.tmdb_image_base_url: str | None = None
         self.failed_paths: list[dict[str, Any]] = []
 
-    def list_categories(self, base_path: str | None = None) -> dict[str, Any]:
+    def list_categories(
+        self, base_path: str | None = None, *, refresh: bool = False
+    ) -> dict[str, Any]:
         root = self.normalize_path(base_path or self.config.media_root)
         with OpenListClient(
             self.config.openlist_base_url, token=self.config.openlist_token
@@ -54,7 +56,7 @@ class OpenListScanner:
             return {
                 "path": root,
                 "parent_path": self.parent_path(root),
-                "entries": self._list_categories(client, root),
+                "entries": self._list_categories(client, root, refresh=refresh),
             }
 
     def scan_category(
@@ -152,10 +154,10 @@ class OpenListScanner:
         }
 
     def _list_categories(
-        self, client: OpenListClient, current_path: str
+        self, client: OpenListClient, current_path: str, *, refresh: bool = False
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for entry in self._list_dir(client, current_path):
+        for entry in self._list_dir(client, current_path, refresh=refresh):
             if not self._is_dir(entry):
                 continue
             name = entry["name"]
@@ -164,7 +166,9 @@ class OpenListScanner:
             path = self._join_path(current_path, name)
             if MEDIA_PATTERN.match(name):
                 continue
-            category_count, media_count = self._count_directory_summary(client, path)
+            category_count, media_count = self._count_directory_summary(
+                client, path, refresh=refresh
+            )
             results.append(
                 {
                     "name": name,
@@ -176,11 +180,11 @@ class OpenListScanner:
         return results
 
     def _count_directory_summary(
-        self, client: OpenListClient, current_path: str
+        self, client: OpenListClient, current_path: str, *, refresh: bool = False
     ) -> tuple[int, int]:
         category_count = 0
         media_count = 0
-        for entry in self._list_dir(client, current_path):
+        for entry in self._list_dir(client, current_path, refresh=refresh):
             if not self._is_dir(entry):
                 continue
             name = entry["name"]

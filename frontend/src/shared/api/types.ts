@@ -133,6 +133,7 @@ export interface AppSettingsDto {
     item_url_template: string;
     database_path: string;
     cache_ttl_seconds: number;
+    refresh_cron: string;
     list_retry_count: number;
     retry_delay_seconds: number;
     skip_failed_directories: boolean;
@@ -163,12 +164,22 @@ export interface AppSettingsDto {
   };
 }
 
+export interface PlayHistoryDto {
+  id: number;
+  media_id: number;
+  media_title: string;
+  media_type: string | null;
+  poster_url: string | null;
+  played_at: number;
+  vote_average?: number | null;
+}
+
 export interface MediaListQuery {
-  categoryPath?: string;
-  includeDescendants?: boolean;
-  year?: number;
-  keyword?: string;
-  type?: string;
-  page?: number;
-  pageSize?: number;
+   categoryPath?: string;
+   includeDescendants?: boolean;
+   year?: number;
+   keyword?: string;
+   type?: string;
+   page?: number;
+   pageSize?: number;
 }

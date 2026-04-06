@@ -314,8 +314,10 @@ button {
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  width: 100%;
   padding: 0 14px;
   border-radius: 12px;
+  border: none;
   color: var(--sidebar-link-text);
   background: transparent;
   text-align: center;
@@ -597,6 +599,12 @@ button {
   padding: 0 16px;
   color: var(--primary-text);
   background: var(--primary-bg);
+}
+
+button.primary,
+.button.primary {
+  background: var(--primary-bg);
+  color: var(--primary-text);
 }
 
 button.secondary,
