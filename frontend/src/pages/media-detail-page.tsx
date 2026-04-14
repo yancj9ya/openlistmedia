@@ -6,8 +6,8 @@ import { ApiClientError } from '../shared/api/client';
 import {
   getDefaultPlayer,
   getPlayLinkWithCategoryRefresh,
+  getPlayerOptions,
   openWithPlayer,
-  PLAYER_OPTIONS,
   recordPlayHistory,
   refreshMediaItem,
   setDefaultPlayer,
@@ -31,6 +31,7 @@ export function MediaDetailPage() {
   const [refreshingDetail, setRefreshingDetail] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerType>(() => getDefaultPlayer());
+  const playerOptions = useMemo(() => getPlayerOptions(), []);
   const mediaPath = data?.openlist_path || null;
   const seasonOptions = useMemo(() => {
     if (!data) {
@@ -76,7 +77,14 @@ export function MediaDetailPage() {
   useEffect(() => {
     setDefaultPlayer(selectedPlayer);
   }, [selectedPlayer]);
-async function handlePlay(path: string) {
+
+  useEffect(() => {
+    if (!playerOptions.some((option) => option.value === selectedPlayer)) {
+      setSelectedPlayer(playerOptions[0]?.value || 'copy');
+    }
+  }, [playerOptions, selectedPlayer]);
+
+  async function handlePlay(path: string) {
   try {
     setLoadingPath(path);
     setActionMessage(null);
@@ -90,7 +98,6 @@ async function handlePlay(path: string) {
     }
     const message = await openWithPlayer(selectedPlayer, payload.playable_url);
     setActionMessage(message);
-      setActionMessage(message);
     } catch (reason) {
       if (reason instanceof ApiClientError) {
         setActionMessage(reason.message);
@@ -189,9 +196,9 @@ async function handlePlay(path: string) {
               </div>
               <div className="file-item detail-files-card detail-files-scroll">
                 <div className="detail-files-header">
-                  <strong>播放列表</strong>
-                  <div className="detail-player-switcher" role="group" aria-label="选择播放器">
-                    {PLAYER_OPTIONS.map((option) => (
+                    <strong>播放列表</strong>
+                    <div className="detail-player-switcher" role="group" aria-label="选择播放器">
+                    {playerOptions.map((option) => (
                       <button
                         key={option.value}
                         type="button"

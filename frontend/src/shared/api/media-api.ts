@@ -15,11 +15,23 @@ import type {
 const ACCESS_STORAGE_KEY = 'openlistmedia:auth';
 export const PLAYER_PREFERENCE_STORAGE_KEY = 'openlistmedia:preferred-player';
 
-export type PlayerType = 'mpv' | 'potplayer' | 'copy';
+export type PlayerType = 'mpv' | 'potplayer' | 'system' | 'nplayer' | 'infuse' | 'copy';
 
-export const PLAYER_OPTIONS: Array<{ value: PlayerType; label: string }> = [
+const DESKTOP_PLAYER_OPTIONS: Array<{ value: PlayerType; label: string }> = [
   { value: 'mpv', label: 'MPV' },
   { value: 'potplayer', label: 'PotPlayer' },
+  { value: 'copy', label: '复制链接' },
+];
+
+const MOBILE_PLAYER_OPTIONS: Array<{ value: PlayerType; label: string }> = [
+  { value: 'system', label: '系统播放' },
+  { value: 'copy', label: '复制链接' },
+];
+
+const IOS_PLAYER_OPTIONS: Array<{ value: PlayerType; label: string }> = [
+  { value: 'system', label: '系统播放' },
+  { value: 'nplayer', label: 'nPlayer' },
+  { value: 'infuse', label: 'Infuse' },
   { value: 'copy', label: '复制链接' },
 ];
 
@@ -61,12 +73,46 @@ export function getMediaDetail(mediaId: number) {
   return requestJson<MediaDetailDto>(`/media/${mediaId}`);
 }
 
-export function getDefaultPlayer(): PlayerType {
+export function isMobileDevice() {
   if (typeof window === 'undefined') {
-    return 'mpv';
+    return false;
+  }
+  const userAgentData = (window.navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+  if (typeof userAgentData?.mobile === 'boolean') {
+    return userAgentData.mobile;
+  }
+  const userAgent = window.navigator.userAgent;
+  return /iPhone|iPod|Android.+Mobile|Windows Phone|Mobile/i.test(userAgent);
+}
+
+export function isIosDevice() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const userAgent = window.navigator.userAgent;
+  const platform = window.navigator.platform || '';
+  const maxTouchPoints = window.navigator.maxTouchPoints || 0;
+  return /iPhone|iPad|iPod/i.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1);
+}
+
+export function getPlayerOptions(): Array<{ value: PlayerType; label: string }> {
+  if (isIosDevice()) {
+    return IOS_PLAYER_OPTIONS;
+  }
+  return isMobileDevice() ? MOBILE_PLAYER_OPTIONS : DESKTOP_PLAYER_OPTIONS;
+}
+
+export function getDefaultPlayer(): PlayerType {
+  const options = getPlayerOptions();
+  const fallback = options[0]?.value || 'copy';
+  if (typeof window === 'undefined') {
+    return fallback;
   }
   const rawValue = window.localStorage.getItem(PLAYER_PREFERENCE_STORAGE_KEY);
-  return isPlayerType(rawValue) ? rawValue : 'mpv';
+  if (isPlayerType(rawValue) && options.some((item) => item.value === rawValue)) {
+    return rawValue;
+  }
+  return fallback;
 }
 
 export function setDefaultPlayer(player: PlayerType) {
@@ -90,6 +136,18 @@ export async function openWithPlayer(player: PlayerType, playableUrl?: string | 
   if (typeof window === 'undefined') {
     return null;
   }
+  if (player === 'system') {
+    window.location.href = playableUrl;
+    return null;
+  }
+  if (player === 'nplayer') {
+    window.location.href = `nplayer-${playableUrl}`;
+    return null;
+  }
+  if (player === 'infuse') {
+    window.location.href = `infuse://x-callback-url/play?url=${encodeURIComponent(playableUrl)}`;
+    return null;
+  }
   if (player === 'potplayer') {
     window.location.href = `potplayer://${playableUrl}`;
     return null;
@@ -99,7 +157,7 @@ export async function openWithPlayer(player: PlayerType, playableUrl?: string | 
 }
 
 function isPlayerType(value: string | null): value is PlayerType {
-  return value === 'mpv' || value === 'potplayer' || value === 'copy';
+  return value === 'mpv' || value === 'potplayer' || value === 'system' || value === 'nplayer' || value === 'infuse' || value === 'copy';
 }
 
 export function getPlayLink(path: string) {

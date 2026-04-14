@@ -299,6 +299,27 @@ button {
   background: linear-gradient(90deg, transparent, var(--panel-border), transparent);
 }
 
+.media-mobile-categories-toggle {
+  display: none;
+  width: 100%;
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--button-border);
+  background: var(--sidebar-button-bg);
+  color: var(--sidebar-button-text);
+}
+
+.media-mobile-filter-toggle {
+  display: none;
+  width: 100%;
+  min-height: 38px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--button-border);
+  background: var(--sidebar-button-bg);
+  color: var(--sidebar-button-text);
+}
+
 .media-sidebar-nav {
   display: grid;
   justify-items: center;
@@ -1115,6 +1136,12 @@ button:disabled {
     padding: 16px;
   }
 
+  .panel,
+  .detail-panel,
+  .legacy-card {
+    padding: 18px;
+  }
+
   .media-subcategory-toolbar,
   .media-subcategory-actions,
   .media-subcategory-search {
@@ -1139,6 +1166,37 @@ button:disabled {
     padding: 20px 16px 24px;
   }
 
+  .detail-hero-content {
+    grid-template-columns: 1fr;
+    align-items: start;
+    min-height: 0;
+    padding-top: 8vh;
+  }
+
+  .detail-copy {
+    max-width: none;
+  }
+
+  .detail-title {
+    font-size: clamp(34px, 9vw, 48px);
+  }
+
+  .detail-files-card {
+    justify-self: stretch;
+  }
+
+  .detail-files-scroll {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+  }
+
+  .detail-files-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .app-header,
   .detail-section-grid,
   .page-grid.two-columns,
@@ -1156,5 +1214,169 @@ button:disabled {
 
   .media-sidebar {
     position: static;
+    min-height: 0;
+    max-height: none;
+    align-items: stretch;
+    text-align: left;
+    padding: 18px;
+  }
+
+  .media-sidebar-title,
+  .media-sidebar-subtitle {
+    text-align: center;
+  }
+
+  .media-sidebar-footer {
+    justify-content: center;
+    margin-top: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .page-grid,
+  .media-main {
+    gap: 14px;
+  }
+
+  .panel,
+  .detail-panel,
+  .legacy-card,
+  .file-item {
+    padding: 14px;
+  }
+
+  .media-sidebar {
+    padding: 14px;
+  }
+
+  .media-sidebar-nav {
+    display: none;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .media-sidebar-nav.mobile-open {
+    display: flex;
+  }
+
+  .media-mobile-categories-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+
+  .media-sidebar-link {
+    width: auto;
+    min-width: 88px;
+    padding: 0 14px;
+  }
+
+  .media-mobile-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .media-subcategory-actions,
+  .media-year-row {
+    display: none;
+    gap: 8px;
+  }
+
+  .media-subcategory-actions.mobile-open,
+  .media-year-row.mobile-open {
+    display: flex;
+  }
+
+  .media-sidebar-title {
+    margin-bottom: 8px;
+    font-size: 26px;
+  }
+
+  .media-browser-content {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+
+  .media-card-title {
+    font-size: 16px;
+  }
+
+  .media-card-tags {
+    gap: 5px;
+  }
+
+  .media-card-tags .chip {
+    max-width: 100%;
+    font-size: 11px;
+  }
+
+  .media-subcategory-button,
+  .media-year-button,
+  .media-subcategory-refresh-button,
+  .media-sidebar-link {
+    min-height: 34px;
+    font-size: 13px;
+  }
+
+  .detail-page {
+    margin: -14px -12px -12px;
+  }
+
+  .detail-hero {
+    gap: 18px;
+    min-height: auto;
+  }
+
+  .detail-hero-fullscreen {
+    padding: 14px 12px 20px;
+  }
+
+  .detail-topbar {
+    justify-content: space-between;
+  }
+
+  .detail-title {
+    font-size: clamp(28px, 11vw, 40px);
+  }
+
+  .detail-overview {
+    font-size: 15px;
+  }
+
+  .detail-episode-grid {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 8px;
+  }
+
+  .detail-episode-button {
+    min-height: 40px;
+  }
+
+  .settings-header-row {
+    align-items: stretch;
+  }
+
+  .settings-header-row .button,
+  .settings-submit-row button {
+    width: 100%;
+  }
+
+  .settings-tab {
+    min-height: 64px;
+    padding: 12px 14px;
   }
 }

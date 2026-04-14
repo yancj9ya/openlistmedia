@@ -217,10 +217,25 @@ class MediaWallDB:
                     scanned_at,
                 ),
             )
-            conn.execute(
-                "DELETE FROM media_items WHERE category_path = ?", (category_path,)
-            )
+            incoming_paths = [
+                str(item.get("openlist_path") or "").strip()
+                for item in payload.get("items", [])
+                if str(item.get("openlist_path") or "").strip()
+            ]
+            if incoming_paths:
+                placeholders = ", ".join("?" for _ in incoming_paths)
+                conn.execute(
+                    f"DELETE FROM media_items WHERE category_path = ? AND media_path NOT IN ({placeholders})",
+                    (category_path, *incoming_paths),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM media_items WHERE category_path = ?", (category_path,)
+                )
             for item in payload.get("items", []):
+                media_path = str(item.get("openlist_path") or "").strip()
+                if not media_path:
+                    continue
                 conn.execute(
                     """
                     INSERT INTO media_items(
@@ -243,10 +258,26 @@ class MediaWallDB:
                         category_label
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(category_path, media_path) DO UPDATE SET
+                        tmdb_id = excluded.tmdb_id,
+                        media_type = excluded.media_type,
+                        title = excluded.title,
+                        display_title = excluded.display_title,
+                        original_title = excluded.original_title,
+                        release_date = excluded.release_date,
+                        vote_average = excluded.vote_average,
+                        updated_at = excluded.updated_at,
+                        payload_json = excluded.payload_json,
+                        sort_title = excluded.sort_title,
+                        search_text = excluded.search_text,
+                        year = excluded.year,
+                        poster_url = excluded.poster_url,
+                        backdrop_url = excluded.backdrop_url,
+                        category_label = excluded.category_label
                     """,
                     (
                         category_path,
-                        item.get("openlist_path"),
+                        media_path,
                         item.get("tmdb_id"),
                         item.get("type"),
                         item.get("title"),
@@ -486,14 +517,14 @@ class MediaWallDB:
             rows = conn.execute(
                 """
                 SELECT recent.id,
-                       recent.media_id,
+                       COALESCE(current_media.id, recent.media_id) AS media_id,
                        recent.media_title,
                        recent.media_type,
                        recent.effective_tmdb_id AS tmdb_id,
                        recent.effective_release_year AS release_year,
-                       recent.poster_url,
+                       COALESCE(current_media.poster_url, recent.poster_url) AS poster_url,
                        recent.played_at,
-                       media_items.vote_average
+                       current_media.vote_average
                 FROM (
                     SELECT ph.id,
                            ph.media_id,
@@ -524,8 +555,21 @@ class MediaWallDB:
                       )
                      AND latest.latest_played_at = ph.played_at
                 ) recent
-                LEFT JOIN media_items ON media_items.id = recent.media_id
-                ORDER BY recent.played_at DESC, recent.id DESC
+                LEFT JOIN media_items current_media
+                  ON (
+                       recent.effective_tmdb_id IS NOT NULL
+                   AND current_media.tmdb_id = recent.effective_tmdb_id
+                  )
+                  OR (
+                       recent.effective_tmdb_id IS NULL
+                   AND current_media.title = recent.media_title
+                   AND COALESCE(current_media.media_type, '') = COALESCE(recent.media_type, '')
+                   AND (
+                        current_media.year = recent.effective_release_year
+                        OR (current_media.year IS NULL AND recent.effective_release_year IS NULL)
+                   )
+                  )
+                ORDER BY recent.played_at DESC, recent.id DESC, current_media.updated_at DESC, current_media.id DESC
                 LIMIT ?
                 """,
                 (limit,),

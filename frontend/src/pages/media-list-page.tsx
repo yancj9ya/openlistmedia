@@ -20,6 +20,9 @@ export function MediaListPage() {
   const type = searchParams.get('type') || undefined;
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [showRecentPlays, setShowRecentPlays] = useState(() => !categoryPath && !keyword && !type);
+  const [showMobileCategories, setShowMobileCategories] = useState(false);
+  const [showMobileSubcategories, setShowMobileSubcategories] = useState(false);
+  const [showMobileYears, setShowMobileYears] = useState(false);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MediaListItemDto[]>([]);
   const [keywordInput, setKeywordInput] = useState(keyword || '');
@@ -97,6 +100,19 @@ export function MediaListPage() {
       setShowRecentPlays(false);
     }
   }, [categoryPath, keyword, type]);
+
+  useEffect(() => {
+    if (categoryPath || keyword || type || showRecentPlays) {
+      setShowMobileCategories(false);
+    }
+  }, [categoryPath, keyword, type, showRecentPlays]);
+
+  useEffect(() => {
+    if (categoryPath || keyword || type || showRecentPlays) {
+      setShowMobileSubcategories(false);
+      setShowMobileYears(false);
+    }
+  }, [categoryPath, keyword, type, showRecentPlays]);
 
   useEffect(() => {
     setKeywordInput(keyword || '');
@@ -183,11 +199,22 @@ export function MediaListPage() {
         </Link>
         <p className="media-sidebar-subtitle">openlist</p>
         <div className="media-sidebar-divider" aria-hidden="true" />
-        <div className="media-sidebar-nav">
+        <button
+          type="button"
+          className="media-mobile-categories-toggle"
+          onClick={() => setShowMobileCategories((current) => !current)}
+          aria-expanded={showMobileCategories}
+        >
+          {showMobileCategories ? '收起分类' : '展开分类'}
+        </button>
+        <div className={`media-sidebar-nav${showMobileCategories ? ' mobile-open' : ''}`}>
           <button
             type="button"
             className={`media-sidebar-link${showRecentPlays ? ' active' : ''}`}
-            onClick={() => setShowRecentPlays((current) => !current)}
+            onClick={() => {
+              setShowRecentPlays((current) => !current);
+              setShowMobileCategories(false);
+            }}
           >
             <span>最近播放</span>
           </button>
@@ -245,7 +272,15 @@ export function MediaListPage() {
         ) : (
           <div className="panel media-browser-hero">
             <div className="media-subcategory-row media-subcategory-toolbar">
-              <div className="media-subcategory-actions">
+              <button
+                type="button"
+                className="media-mobile-filter-toggle"
+                onClick={() => setShowMobileSubcategories((current) => !current)}
+                aria-expanded={showMobileSubcategories}
+              >
+                {showMobileSubcategories ? '收起二级分类' : '展开二级分类'}
+              </button>
+              <div className={`media-subcategory-actions${showMobileSubcategories ? ' mobile-open' : ''}`}>
                 <button
                   type="button"
                   className="media-subcategory-refresh-button"
@@ -258,6 +293,7 @@ export function MediaListPage() {
                   <Link
                     className={`media-subcategory-button${categoryPath === topLevelPath ? ' active' : ''}`}
                     to={`/media?category_path=${encodeURIComponent(topLevelPath)}`}
+                    onClick={() => setShowMobileSubcategories(false)}
                   >
                     全部
                   </Link>
@@ -269,6 +305,7 @@ export function MediaListPage() {
                       key={item.path}
                       className={`media-subcategory-button${active ? ' active' : ''}`}
                       to={`/media?category_path=${encodeURIComponent(item.path)}`}
+                      onClick={() => setShowMobileSubcategories(false)}
                     >
                       {item.name}
                     </Link>
@@ -286,11 +323,22 @@ export function MediaListPage() {
               </form>
             </div>
             {refreshMessage ? <div className="muted-text media-subcategory-refresh-message">{refreshMessage}</div> : null}
-            <div className="media-year-row">
+            <button
+              type="button"
+              className="media-mobile-filter-toggle"
+              onClick={() => setShowMobileYears((current) => !current)}
+              aria-expanded={showMobileYears}
+            >
+              {showMobileYears ? '收起年份' : '展开年份'}
+            </button>
+            <div className={`media-year-row${showMobileYears ? ' mobile-open' : ''}`}>
               <button
                 type="button"
                 className={`media-year-button${!selectedYear ? ' active' : ''}`}
-                onClick={() => setSelectedYear(null)}
+                onClick={() => {
+                  setSelectedYear(null);
+                  setShowMobileYears(false);
+                }}
               >
                 全部年份
               </button>
@@ -299,7 +347,10 @@ export function MediaListPage() {
                   type="button"
                   key={itemYear}
                   className={`media-year-button${selectedYear === itemYear ? ' active' : ''}`}
-                  onClick={() => setSelectedYear(itemYear)}
+                  onClick={() => {
+                    setSelectedYear(itemYear);
+                    setShowMobileYears(false);
+                  }}
                 >
                   {itemYear}
                 </button>
