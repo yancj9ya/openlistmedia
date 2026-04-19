@@ -10,6 +10,7 @@ import type {
   PlayHistoryDto,
   PlayLinkDto,
   RefreshResponseDto,
+  SaveSettingsResponseDto,
 } from './types';
 
 const ACCESS_STORAGE_KEY = 'openlistmedia:auth';
@@ -51,14 +52,14 @@ function getAccessPasscode() {
   }
 }
 
-export function getCategoryTree(path?: string) {
-  return requestJson<CategoryTreeDto>('/categories', undefined, {
+export function getCategoryTree(path?: string, signal?: AbortSignal) {
+  return requestJson<CategoryTreeDto>('/categories', { signal }, {
     path,
   });
 }
 
-export function getMediaList(query: MediaListQuery) {
-  return requestJson<MediaListResponseDto>('/media', undefined, {
+export function getMediaList(query: MediaListQuery, signal?: AbortSignal) {
+  return requestJson<MediaListResponseDto>('/media', { signal }, {
     category_path: query.categoryPath,
     include_descendants: query.includeDescendants ? 1 : undefined,
     year: query.year,
@@ -66,11 +67,13 @@ export function getMediaList(query: MediaListQuery) {
     type: query.type,
     page: query.page,
     page_size: query.pageSize,
+    sort_by: query.sortBy,
+    sort_order: query.sortOrder,
   });
 }
 
-export function getMediaDetail(mediaId: number) {
-  return requestJson<MediaDetailDto>(`/media/${mediaId}`);
+export function getMediaDetail(mediaId: number, signal?: AbortSignal) {
+  return requestJson<MediaDetailDto>(`/media/${mediaId}`, { signal });
 }
 
 export function isMobileDevice() {
@@ -203,15 +206,15 @@ export function getSettings() {
 
 export function saveSettings(payload: AppSettingsDto) {
   const passcode = getAccessPasscode();
-  return requestJson<AppSettingsDto>('/settings', {
+  return requestJson<SaveSettingsResponseDto>('/settings', {
     method: 'POST',
     headers: passcode ? { 'X-Access-Passcode': passcode } : undefined,
     body: JSON.stringify(payload),
   });
 }
 
-export function getRecentPlayHistory() {
-  return requestJson<PlayHistoryDto[]>('/recent-plays');
+export function getRecentPlayHistory(signal?: AbortSignal) {
+  return requestJson<PlayHistoryDto[]>('/recent-plays', { signal });
 }
 
 export async function recordPlayHistory(mediaId: number): Promise<void> {

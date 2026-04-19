@@ -182,4 +182,12 @@ export interface MediaListQuery {
    type?: string;
    page?: number;
    pageSize?: number;
+   sortBy?: string;
+   sortOrder?: 'asc' | 'desc';
+}
+
+export interface SaveSettingsResponseDto {
+  settings: AppSettingsDto;
+  restart_required: boolean;
+  changed_fields: string[];
 }

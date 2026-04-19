@@ -33,20 +33,15 @@ class MediaWallDB:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self._init_db()
-        except sqlite3.OperationalError:
-            fallback = Path(".cache") / "media_wall_fallback.db"
-            fallback.parent.mkdir(parents=True, exist_ok=True)
-            self.path = fallback
-            self._init_db()
+        self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=MEMORY")
-        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def _init_db(self) -> None:
@@ -359,6 +354,14 @@ class MediaWallDB:
         if not row:
             return False
         return int(time.time()) - int(row["scanned_at"]) < ttl_seconds
+
+    def category_cache_exists(self, category_path: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM category_cache WHERE category_path = ? LIMIT 1",
+                (category_path,),
+            ).fetchone()
+        return row is not None
 
     def query_media_items(self, options: MediaQueryOptions) -> MediaQueryResult:
         page = max(options.page, 1)

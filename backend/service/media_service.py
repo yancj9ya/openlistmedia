@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-import os
-import sys
+import dataclasses
 import threading
 import time
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Callable
 
 from backend.scheduler import validate_cron_expression
 from openlist_sdk import OpenListClient
 from openlist_sdk.exceptions import OpenListAPIError, OpenListHTTPError
 
-from backend.config.settings import BackendConfig
+from backend.config.settings import BackendConfig, load_backend_config
 from backend.repository import MediaQueryOptions, MediaWallDB
 from backend.scanner import OpenListScanner
 from config_loader import load_config, save_config
+
+
+ConfigListener = Callable[[BackendConfig], None]
 
 
 class MediaWallService:
@@ -22,6 +24,27 @@ class MediaWallService:
         self.config = config
         self.db = MediaWallDB(config.media_wall.database_path)
         self.scanner = OpenListScanner(config.media_wall)
+        self._category_locks: dict[str, threading.Lock] = {}
+        self._category_locks_guard = threading.Lock()
+        self._config_listeners: list[ConfigListener] = []
+        self._category_tree_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._category_tree_cache_lock = threading.Lock()
+        self._category_tree_cache_ttl = 60.0
+
+    def register_config_listener(self, listener: ConfigListener) -> None:
+        self._config_listeners.append(listener)
+
+    def _get_category_lock(self, category_path: str) -> threading.Lock:
+        with self._category_locks_guard:
+            lock = self._category_locks.get(category_path)
+            if lock is None:
+                lock = threading.Lock()
+                self._category_locks[category_path] = lock
+            return lock
+
+    def _invalidate_category_tree_cache(self) -> None:
+        with self._category_tree_cache_lock:
+            self._category_tree_cache.clear()
 
     def health(self) -> dict[str, Any]:
         return {
@@ -32,14 +55,22 @@ class MediaWallService:
         }
 
     def get_category_tree(self, category_path: str | None = None) -> dict[str, Any]:
-        payload = self.scanner.list_categories(
-            category_path or self.config.media_wall.media_root
-        )
+        target_path = category_path or self.config.media_wall.media_root
+        cache_key = target_path
+        now = time.monotonic()
+        with self._category_tree_cache_lock:
+            cached = self._category_tree_cache.get(cache_key)
+            if cached and now - cached[0] < self._category_tree_cache_ttl:
+                return cached[1]
+
+        payload = self.scanner.list_categories(target_path)
         payload["root"] = self.config.media_wall.media_root
         payload["skip_directories"] = self.config.media_wall.skip_directories
         payload["children"] = [
             self._to_category_node(entry) for entry in payload.get("entries", [])
         ]
+        with self._category_tree_cache_lock:
+            self._category_tree_cache[cache_key] = (time.monotonic(), payload)
         return payload
 
     def get_settings(self) -> dict[str, Any]:
@@ -86,21 +117,55 @@ class MediaWallService:
 
         save_config(merged)
 
-        self.config.media_wall.skip_directories = normalized_skip_directories
-        self.scanner.config.skip_directories = normalized_skip_directories
+        reload_result = self._apply_config_reload()
 
         if normalized_skip_directories != previous_skip_directories:
             self.db.clear_all_cache()
 
-        return merged
+        return {
+            "saved": merged,
+            "restart_required": reload_result["restart_required"],
+            "changed_fields": reload_result["changed_fields"],
+        }
 
-    def _restart_process(self) -> None:
-        time.sleep(0.5)
-        os.execv(sys.executable, [sys.executable, "-m", "backend.main"])
+    def _apply_config_reload(self) -> dict[str, Any]:
+        fresh = load_backend_config()
+        old_api = self.config.api
+        restart_fields: list[str] = []
+        if fresh.api.host != old_api.host:
+            restart_fields.append("backend.host")
+        if fresh.api.port != old_api.port:
+            restart_fields.append("backend.port")
+        if str(fresh.media_wall.database_path) != str(
+            self.config.media_wall.database_path
+        ):
+            restart_fields.append("media_wall.database_path")
 
-    def restart_backend(self) -> dict[str, Any]:
-        threading.Thread(target=self._restart_process, daemon=True).start()
-        return {"restart_requested": True}
+        self._mutate_dataclass(self.config.api, fresh.api)
+        self._mutate_dataclass(self.config.api.cors, fresh.api.cors)
+        self._mutate_dataclass(self.config.frontend, fresh.frontend)
+        self._mutate_dataclass(self.config.media_wall, fresh.media_wall)
+
+        for listener in list(self._config_listeners):
+            try:
+                listener(self.config)
+            except Exception as exc:
+                print(f"Config listener failed: {exc}")
+
+        return {
+            "restart_required": bool(restart_fields),
+            "changed_fields": restart_fields,
+        }
+
+    @staticmethod
+    def _mutate_dataclass(target: Any, source: Any) -> None:
+        if not dataclasses.is_dataclass(target) or not dataclasses.is_dataclass(source):
+            return
+        for field in dataclasses.fields(source):
+            setattr(target, field.name, getattr(source, field.name))
+
+    def apply_settings(self) -> dict[str, Any]:
+        return self._apply_config_reload()
 
     def get_media_list(
         self,
@@ -115,10 +180,15 @@ class MediaWallService:
         sort_order: str,
     ) -> dict[str, Any]:
         normalized_path = self._normalize_optional_path(category_path)
-        if normalized_path and not self.db.cache_is_fresh(
-            normalized_path, self.config.media_wall.cache_ttl_seconds
-        ):
-            self.refresh_category(normalized_path)
+        if normalized_path:
+            ttl = self.config.media_wall.cache_ttl_seconds
+            if not self.db.cache_is_fresh(normalized_path, ttl):
+                if self.db.category_cache_exists(normalized_path):
+                    self._schedule_background_refresh(normalized_path)
+                else:
+                    with self._get_category_lock(normalized_path):
+                        if not self.db.cache_is_fresh(normalized_path, ttl):
+                            self._refresh_category_locked(normalized_path)
         query_result = self.db.query_media_items(
             MediaQueryOptions(
                 category_path=normalized_path,
@@ -141,6 +211,25 @@ class MediaWallService:
                 normalized_path, include_descendants=include_descendants
             ),
         }
+
+    def _schedule_background_refresh(self, normalized_path: str) -> None:
+        lock = self._get_category_lock(normalized_path)
+        if not lock.acquire(blocking=False):
+            return
+
+        def run() -> None:
+            try:
+                self._refresh_category_locked(normalized_path)
+            except Exception as exc:
+                print(f"Background refresh failed for {normalized_path}: {exc}")
+            finally:
+                lock.release()
+
+        threading.Thread(
+            target=run,
+            daemon=True,
+            name=f"bg-refresh-{normalized_path}",
+        ).start()
 
     def get_media_detail(self, media_id: int) -> dict[str, Any] | None:
         item = self.db.get_media_item(media_id)
@@ -174,6 +263,14 @@ class MediaWallService:
         self, category_path: str, *, force_remote_refresh: bool = False
     ) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(category_path)
+        with self._get_category_lock(normalized_path):
+            return self._refresh_category_locked(
+                normalized_path, force_remote_refresh=force_remote_refresh
+            )
+
+    def _refresh_category_locked(
+        self, normalized_path: str, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
         payload = self.scanner.scan_category(
             normalized_path, refresh=force_remote_refresh
         )
@@ -184,24 +281,27 @@ class MediaWallService:
             payload=payload,
         )
         payload["cache_hit"] = False
+        self._invalidate_category_tree_cache()
         return payload
 
     def refresh_media_item(
         self, media_path: str, *, force_remote_refresh: bool = False
     ) -> dict[str, Any]:
         normalized_path = OpenListScanner.normalize_path(media_path)
-        payload = self.scanner.scan_media_item(
-            normalized_path, refresh=force_remote_refresh
-        )
-        self.db.replace_media_item(
-            category_path=payload["category_path"],
-            media_path=normalized_path,
-            item=payload["item"],
-        )
-        refreshed_item = self.db.get_media_item_by_path(
-            payload["category_path"],
-            str(payload["item"].get("openlist_path") or normalized_path),
-        )
+        parent_category = OpenListScanner.parent_path(normalized_path) or "/"
+        with self._get_category_lock(parent_category):
+            payload = self.scanner.scan_media_item(
+                normalized_path, refresh=force_remote_refresh
+            )
+            self.db.replace_media_item(
+                category_path=payload["category_path"],
+                media_path=normalized_path,
+                item=payload["item"],
+            )
+            refreshed_item = self.db.get_media_item_by_path(
+                payload["category_path"],
+                str(payload["item"].get("openlist_path") or normalized_path),
+            )
         payload["media_id"] = refreshed_item.get("db_id") if refreshed_item else None
         payload["media_path"] = payload["item"].get("openlist_path") or normalized_path
         payload["cache_hit"] = False

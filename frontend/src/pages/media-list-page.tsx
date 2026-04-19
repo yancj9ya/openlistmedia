@@ -18,7 +18,8 @@ export function MediaListPage() {
   const categoryPath = searchParams.get('category_path') || undefined;
   const keyword = searchParams.get('keyword') || undefined;
   const type = searchParams.get('type') || undefined;
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const yearParam = searchParams.get('year');
+  const selectedYear = yearParam ? Number(yearParam) || null : null;
   const [showRecentPlays, setShowRecentPlays] = useState(() => !categoryPath && !keyword && !type);
   const [showMobileCategories, setShowMobileCategories] = useState(false);
   const [showMobileSubcategories, setShowMobileSubcategories] = useState(false);
@@ -29,8 +30,16 @@ export function MediaListPage() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const pageSize = DEFAULT_PAGE_SIZE;
   const query = useMemo(
-    () => ({ categoryPath, includeDescendants: Boolean(categoryPath), keyword, type, page, pageSize }),
-    [categoryPath, keyword, page, pageSize, type],
+    () => ({
+      categoryPath,
+      includeDescendants: Boolean(categoryPath),
+      keyword,
+      type,
+      year: selectedYear ?? undefined,
+      page,
+      pageSize,
+    }),
+    [categoryPath, keyword, page, pageSize, selectedYear, type],
   );
   const { data, loading, error, reload: reloadMediaList } = useMediaList(query);
   const { data: recentPlays, loading: recentLoading, error: recentError } = useRecentPlays();
@@ -47,22 +56,24 @@ export function MediaListPage() {
   const secondaryItems = secondaryCategories?.children || [];
   const [refreshingCategory, setRefreshingCategory] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-  const years = useMemo(() => {
-    const values = new Set<number>();
-    items.forEach((item) => {
-      const value = Number(item.year || 0);
-      if (value > 0) {
-        values.add(value);
-      }
-    });
-    return Array.from(values).sort((left, right) => right - left);
-  }, [items]);
-  const visibleItems = useMemo(() => {
-    if (!selectedYear) {
-      return items;
+  const years = useMemo(() => [...(data?.years || [])].sort((left, right) => right - left), [data?.years]);
+  const hasNext = Boolean(data?.pagination.has_next);
+  const currentSecondaryPath = categoryPath && categoryPath !== topLevelPath ? categoryPath : null;
+
+  function updateSelectedYear(nextYear: number | null) {
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextYear) {
+      nextParams.set('year', String(nextYear));
+    } else {
+      nextParams.delete('year');
     }
-    return items.filter((item) => Number(item.year || 0) === selectedYear);
-  }, [items, selectedYear]);
+    setSearchParams(nextParams);
+  }
+
+  useEffect(() => {
+    setPage(1);
+    setItems([]);
+  }, [categoryPath, keyword, type, selectedYear]);
   const recentPlayItems = useMemo<MediaListItemDto[]>(
     () =>
       (recentPlays || []).map((item) => ({
@@ -86,14 +97,6 @@ export function MediaListPage() {
       })),
     [recentPlays],
   );
-  const hasNext = Boolean(data?.pagination.has_next);
-  const currentSecondaryPath = categoryPath && categoryPath !== topLevelPath ? categoryPath : null;
-
-  useEffect(() => {
-    setSelectedYear(null);
-    setPage(1);
-    setItems([]);
-  }, [categoryPath, keyword, type]);
 
   useEffect(() => {
     if (categoryPath || keyword || type) {
@@ -336,7 +339,7 @@ export function MediaListPage() {
                 type="button"
                 className={`media-year-button${!selectedYear ? ' active' : ''}`}
                 onClick={() => {
-                  setSelectedYear(null);
+                  updateSelectedYear(null);
                   setShowMobileYears(false);
                 }}
               >
@@ -348,7 +351,7 @@ export function MediaListPage() {
                   key={itemYear}
                   className={`media-year-button${selectedYear === itemYear ? ' active' : ''}`}
                   onClick={() => {
-                    setSelectedYear(itemYear);
+                    updateSelectedYear(itemYear);
                     setShowMobileYears(false);
                   }}
                 >
@@ -376,7 +379,7 @@ export function MediaListPage() {
             <AsyncState loading={loading && items.length === 0} error={error} empty={!loading && !error && !items.length} emptyText="没有匹配到媒体数据。">
               <>
                 <div className="media-grid media-grid-emby">
-                  {visibleItems.map((item) => (
+                  {items.map((item) => (
                     <MediaCard key={item.id} item={item} />
                   ))}
                 </div>

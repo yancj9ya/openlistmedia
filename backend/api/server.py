@@ -124,5 +124,6 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-class ReusableTCPServer(socketserver.TCPServer):
+class ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+    daemon_threads = True

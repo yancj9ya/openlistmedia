@@ -111,11 +111,17 @@ class MediaRoutes:
             if not self.service.is_admin_passcode(passcode):
                 return error_response("forbidden", "Admin passcode required.", 403)
             try:
-                saved = self.service.update_settings(payload)
+                result = self.service.update_settings(payload)
             except ValueError as exc:
                 return error_response("bad_request", str(exc), 400)
-            self.service.restart_backend()
-            return 200, ok_response(saved, message="settings_saved_restart_requested")
+            return 200, ok_response(
+                {
+                    "settings": result["saved"],
+                    "restart_required": result["restart_required"],
+                    "changed_fields": result["changed_fields"],
+                },
+                message="settings_saved",
+            )
         if path != f"{self.api_prefix}/refresh":
             return error_response("not_found", "Route not found.", 404)
         if self.admin_token and headers.get("X-Admin-Token") != self.admin_token:

@@ -1,47 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getRecentPlayHistory } from '../../shared/api/media-api';
 import type { PlayHistoryDto } from '../../shared/api/types';
 
-interface UseRecentPlaysState {
-  data: PlayHistoryDto[] | null;
-  loading: boolean;
-  error: Error | null;
-}
-
 export function useRecentPlays() {
-  const [state, setState] = useState<UseRecentPlaysState>({
-    data: null,
-    loading: true,
-    error: null,
+  const query = useQuery<PlayHistoryDto[]>({
+    queryKey: ['recent-plays'],
+    queryFn: ({ signal }) => getRecentPlayHistory(signal),
   });
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function fetchRecentPlays() {
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
-        const result = await getRecentPlayHistory();
-        if (mounted) {
-          setState({ data: result, loading: false, error: null });
-        }
-      } catch (err) {
-        if (mounted) {
-          setState({
-            data: null,
-            loading: false,
-            error: err instanceof Error ? err : new Error('Failed to fetch recent plays'),
-          });
-        }
-      }
-    }
-
-    fetchRecentPlays();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  return state;
+  return {
+    data: query.data ?? null,
+    loading: query.isPending,
+    error: query.isError ? (query.error instanceof Error ? query.error : new Error('Failed to fetch recent plays')) : null,
+  };
 }
