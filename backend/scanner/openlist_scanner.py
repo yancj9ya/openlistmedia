@@ -39,14 +39,34 @@ VIDEO_SUFFIXES = {
 
 
 class OpenListScanner:
-    def __init__(self, config: MediaWallConfig) -> None:
+    def __init__(self, config: MediaWallConfig, db: Any = None) -> None:
         self.config = config
-        self.tmdb_cache_path = Path(".cache") / "media_wall_tmdb_cache.json"
-        self.tmdb_cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.tmdb_cache = self._load_tmdb_cache()
+        self.db = db
         self.tmdb_image_base_url: str | None = None
         self._scan_local = threading.local()
         self._tmdb_cache_lock = threading.Lock()
+        self._client_local = threading.local()
+        self._login_lock = threading.Lock()
+        if self.db is not None and hasattr(self.db, "load_all_tmdb_cache"):
+            self.tmdb_cache = self.db.load_all_tmdb_cache()
+        else:
+            self.tmdb_cache = {}
+        self._client_local = threading.local()
+        self._login_lock = threading.Lock()
+
+    def get_client(self) -> OpenListClient:
+        client = getattr(self._client_local, "client", None)
+        if client is None:
+            client = OpenListClient(
+                self.config.openlist_base_url,
+                token=self.config.openlist_token,
+            )
+            if not client.token:
+                with self._login_lock:
+                    if not client.token:
+                        self._ensure_openlist_auth(client)
+            self._client_local.client = client
+        return client
 
     @property
     def failed_paths(self) -> list[dict[str, Any]]:
@@ -64,15 +84,12 @@ class OpenListScanner:
         self, base_path: str | None = None, *, refresh: bool = False
     ) -> dict[str, Any]:
         root = self.normalize_path(base_path or self.config.media_root)
-        with OpenListClient(
-            self.config.openlist_base_url, token=self.config.openlist_token
-        ) as client:
-            self._ensure_openlist_auth(client)
-            return {
-                "path": root,
-                "parent_path": self.parent_path(root),
-                "entries": self._list_categories(client, root, refresh=refresh),
-            }
+        client = self.get_client()
+        return {
+            "path": root,
+            "parent_path": self.parent_path(root),
+            "entries": self._list_categories(client, root, refresh=refresh),
+        }
 
     def scan_category(
         self, category_path: str, *, refresh: bool = False
@@ -81,26 +98,23 @@ class OpenListScanner:
         category_name = (
             category_path.rstrip("/").split("/")[-1] if category_path != "/" else "/"
         )
-        with OpenListClient(
-            self.config.openlist_base_url, token=self.config.openlist_token
-        ) as openlist:
-            self._ensure_openlist_auth(openlist)
-            tmdb_client: TMDbClient | None = None
-            if self.config.tmdb_read_access_token or self.config.tmdb_api_key:
-                tmdb_client = TMDbClient(
-                    self.config.tmdb_read_access_token, api_key=self.config.tmdb_api_key
-                )
-            try:
-                if tmdb_client:
-                    self.tmdb_image_base_url = tmdb_client.configuration_details()[
-                        "images"
-                    ]["secure_base_url"]
-                items = self._scan_category_items(
-                    openlist, tmdb_client, category_path, refresh=refresh
-                )
-            finally:
-                if tmdb_client:
-                    tmdb_client.close()
+        openlist = self.get_client()
+        tmdb_client: TMDbClient | None = None
+        if self.config.tmdb_read_access_token or self.config.tmdb_api_key:
+            tmdb_client = TMDbClient(
+                self.config.tmdb_read_access_token, api_key=self.config.tmdb_api_key
+            )
+        try:
+            if tmdb_client:
+                self.tmdb_image_base_url = tmdb_client.configuration_details()[
+                    "images"
+                ]["secure_base_url"]
+            items = self._scan_category_items(
+                openlist, tmdb_client, category_path, refresh=refresh
+            )
+        finally:
+            if tmdb_client:
+                tmdb_client.close()
         items.sort(key=lambda item: (item["type"], item["title"].lower()))
         payload = {
             "category_path": category_path,
@@ -131,31 +145,28 @@ class OpenListScanner:
         category_path = self.parent_path(media_path)
         if not category_path:
             raise ValueError("Invalid media_path: missing parent category path.")
-        with OpenListClient(
-            self.config.openlist_base_url, token=self.config.openlist_token
-        ) as openlist:
-            self._ensure_openlist_auth(openlist)
-            tmdb_client: TMDbClient | None = None
-            if self.config.tmdb_read_access_token or self.config.tmdb_api_key:
-                tmdb_client = TMDbClient(
-                    self.config.tmdb_read_access_token, api_key=self.config.tmdb_api_key
-                )
-            try:
-                if tmdb_client:
-                    self.tmdb_image_base_url = tmdb_client.configuration_details()[
-                        "images"
-                    ]["secure_base_url"]
-                item = self._scan_media_directory(
-                    openlist,
-                    tmdb_client,
-                    media_path,
-                    [category_path.rstrip("/").split("/")[-1]],
-                    media_match,
-                    refresh=refresh,
-                )
-            finally:
-                if tmdb_client:
-                    tmdb_client.close()
+        openlist = self.get_client()
+        tmdb_client: TMDbClient | None = None
+        if self.config.tmdb_read_access_token or self.config.tmdb_api_key:
+            tmdb_client = TMDbClient(
+                self.config.tmdb_read_access_token, api_key=self.config.tmdb_api_key
+            )
+        try:
+            if tmdb_client:
+                self.tmdb_image_base_url = tmdb_client.configuration_details()[
+                    "images"
+                ]["secure_base_url"]
+            item = self._scan_media_directory(
+                openlist,
+                tmdb_client,
+                media_path,
+                [category_path.rstrip("/").split("/")[-1]],
+                media_match,
+                refresh=refresh,
+            )
+        finally:
+            if tmdb_client:
+                tmdb_client.close()
         self._save_tmdb_cache()
         return {
             "category_path": category_path,
@@ -187,12 +198,10 @@ class OpenListScanner:
             return []
 
         def count(path: str) -> tuple[int, int]:
-            with OpenListClient(
-                self.config.openlist_base_url, token=self.config.openlist_token
-            ) as child_client:
-                return self._count_directory_summary(
-                    child_client, path, refresh=refresh
-                )
+            child_client = self.get_client()
+            return self._count_directory_summary(
+                child_client, path, refresh=refresh
+            )
 
         workers = min(len(candidates), 8)
         with ThreadPoolExecutor(
@@ -277,9 +286,7 @@ class OpenListScanner:
         def scan_one(task: tuple[str, re.Match[str]]) -> dict[str, Any]:
             path, media_match = task
             self._scan_local.failed_paths = []
-            child_openlist = OpenListClient(
-                self.config.openlist_base_url, token=self.config.openlist_token
-            )
+            child_openlist = self.get_client()
             child_tmdb: TMDbClient | None = None
             if tmdb_client is not None:
                 child_tmdb = TMDbClient(
@@ -298,7 +305,6 @@ class OpenListScanner:
             finally:
                 if child_tmdb is not None:
                     child_tmdb.close()
-                child_openlist.close()
             with aggregated_failed_lock:
                 aggregated_failed.extend(self._scan_local.failed_paths)
             self._scan_local.failed_paths = []
@@ -329,29 +335,47 @@ class OpenListScanner:
         top_level_entries = self._list_dir(client, media_path, refresh=refresh)
         files: list[dict[str, Any]] = []
         seasons: dict[int, dict[str, Any]] = {}
+
+        dir_tasks: list[tuple[str, str, re.Match[str] | None]] = []
+        direct_video_entries: list[dict[str, Any]] = []
         for entry in top_level_entries:
             name = entry["name"]
             path = self._join_path(media_path, name)
             if self._is_dir(entry):
-                season_match = SEASON_PATTERN.match(name)
-                if season_match:
-                    season_number = int(season_match.group("number"))
-                    season_files = self._scan_files_recursive(
-                        client, path, refresh=refresh
-                    )
-                    seasons[season_number] = {
-                        "season_number": season_number,
-                        "name": name,
-                        "path": path,
-                        "episodes": season_files,
-                    }
-                    files.extend(season_files)
-                else:
-                    files.extend(
-                        self._scan_files_recursive(client, path, refresh=refresh)
-                    )
+                dir_tasks.append((name, path, SEASON_PATTERN.match(name)))
             elif self._is_video(name):
-                files.append(self._make_file_entry(entry, media_path))
+                direct_video_entries.append(entry)
+
+        def scan_dir(
+            task: tuple[str, str, re.Match[str] | None],
+        ) -> tuple[str, str, re.Match[str] | None, list[dict[str, Any]]]:
+            name, path, season_match = task
+            sub_client = self.get_client()
+            episodes = self._scan_files_recursive(sub_client, path, refresh=refresh)
+            return name, path, season_match, episodes
+
+        if len(dir_tasks) <= 1:
+            dir_results = [scan_dir(t) for t in dir_tasks]
+        else:
+            workers = min(len(dir_tasks), 4)
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="season-scan"
+            ) as pool:
+                dir_results = list(pool.map(scan_dir, dir_tasks))
+
+        for name, path, season_match, episodes in dir_results:
+            if season_match:
+                season_number = int(season_match.group("number"))
+                seasons[season_number] = {
+                    "season_number": season_number,
+                    "name": name,
+                    "path": path,
+                    "episodes": episodes,
+                }
+            files.extend(episodes)
+
+        for entry in direct_video_entries:
+            files.append(self._make_file_entry(entry, media_path))
 
         media_type = (
             "tv"
@@ -492,6 +516,11 @@ class OpenListScanner:
             return None
         with self._tmdb_cache_lock:
             self.tmdb_cache[cache_key] = metadata
+        if self.db is not None and hasattr(self.db, "upsert_tmdb_cache"):
+            try:
+                self.db.upsert_tmdb_cache(cache_key, metadata)
+            except Exception as exc:
+                print(f"TMDb cache persist failed for {cache_key}: {exc}")
         return metadata
 
     def _ensure_openlist_auth(self, client: OpenListClient) -> None:
@@ -516,7 +545,8 @@ class OpenListScanner:
         self, client: OpenListClient, path: str, *, refresh: bool = False
     ) -> list[dict[str, Any]]:
         last_error: OpenListHTTPError | None = None
-        for attempt in range(1, self.config.list_retry_count + 2):
+        max_attempts = self.config.list_retry_count + 1
+        for attempt in range(1, max_attempts + 1):
             try:
                 payload = client.list_dir(path, refresh=refresh)
                 if isinstance(payload, dict) and isinstance(
@@ -529,9 +559,12 @@ class OpenListScanner:
                     ]
                 return []
             except OpenListHTTPError as exc:
+                if 400 <= exc.status_code < 500:
+                    raise
                 last_error = exc
-                if attempt < self.config.list_retry_count + 1:
-                    time.sleep(self.config.retry_delay_seconds)
+                if attempt < max_attempts:
+                    delay = self.config.retry_delay_seconds * (2 ** (attempt - 1))
+                    time.sleep(delay)
         if last_error:
             raise last_error
         return []
@@ -558,19 +591,10 @@ class OpenListScanner:
         return self.config.item_url_template.replace("{path}", quote(path, safe="/"))
 
     def _load_tmdb_cache(self) -> dict[str, Any]:
-        if not self.tmdb_cache_path.exists():
-            return {}
-        try:
-            return json.loads(self.tmdb_cache_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return {}
+        return {}
 
     def _save_tmdb_cache(self) -> None:
-        with self._tmdb_cache_lock:
-            self.tmdb_cache_path.write_text(
-                json.dumps(self.tmdb_cache, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+        return None
 
     @staticmethod
     def _is_dir(entry: dict[str, Any]) -> bool:

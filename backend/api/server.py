@@ -7,7 +7,7 @@ from pathlib import Path
 import socketserver
 from urllib.parse import urlparse
 
-from backend.dto.responses import error_response
+from backend.dto.responses import RawResponse, error_response
 
 
 class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -29,6 +29,9 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             )
         except Exception as exc:
             status, payload = error_response("internal_error", str(exc), 500)
+        if isinstance(payload, RawResponse):
+            self._send_raw(status, payload)
+            return
         if status == 404 and self._try_serve_frontend(parsed.path):
             return
         self._send_json(status, payload)
@@ -64,21 +67,29 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_raw(self, status: int, response: RawResponse) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", response.content_type)
+        self.send_header("Content-Length", str(len(response.body)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(response.body)
+
     def _send_cors_headers(self) -> None:
         cors = self.cors
         if not cors:
             return
         origin = self.headers.get("Origin", "").strip()
-        allowed_origins = cors.allow_origins or ["*"]
+        allowed_origins = cors.allow_origins or []
+        allow_origin: str | None = None
         if "*" in allowed_origins:
             allow_origin = "*"
         elif origin and origin in allowed_origins:
             allow_origin = origin
-        elif allowed_origins:
-            allow_origin = allowed_origins[0]
-        else:
-            allow_origin = "*"
-        self.send_header("Access-Control-Allow-Origin", allow_origin)
+        if allow_origin is not None:
+            self.send_header("Access-Control-Allow-Origin", allow_origin)
+            if allow_origin != "*":
+                self.send_header("Vary", "Origin")
         self.send_header(
             "Access-Control-Allow-Methods",
             ", ".join(cors.allow_methods or ["GET", "POST", "OPTIONS"]),
@@ -92,7 +103,7 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         frontend = self.frontend
         if not frontend:
             return False
-        dist_dir = Path(frontend.dist_dir)
+        dist_dir = Path(frontend.dist_dir).resolve()
         if not dist_dir.exists() or not dist_dir.is_dir():
             return False
         request_path = path.strip() or "/"
@@ -101,24 +112,39 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if request_path == "/":
             candidate = dist_dir / "index.html"
         else:
-            candidate = dist_dir / request_path.lstrip("/")
+            candidate = (dist_dir / request_path.lstrip("/")).resolve()
+            try:
+                candidate.relative_to(dist_dir)
+            except ValueError:
+                return False
             if candidate.is_dir():
                 candidate = candidate / "index.html"
         if candidate.exists() and candidate.is_file():
-            self._send_file(candidate)
+            self._send_file(candidate, dist_dir)
             return True
         index_file = dist_dir / "index.html"
         if index_file.exists() and index_file.is_file():
-            self._send_file(index_file)
+            self._send_file(index_file, dist_dir)
             return True
         return False
 
-    def _send_file(self, path: Path) -> None:
+    def _send_file(self, path: Path, dist_dir: Path) -> None:
         body = path.read_bytes()
         content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        try:
+            relative = path.resolve().relative_to(dist_dir)
+            first_segment = relative.parts[0] if relative.parts else ""
+        except ValueError:
+            first_segment = ""
+        if first_segment == "assets":
+            self.send_header(
+                "Cache-Control", "public, max-age=31536000, immutable"
+            )
+        else:
+            self.send_header("Cache-Control", "no-cache")
         self._send_cors_headers()
         self.end_headers()
         self.wfile.write(body)

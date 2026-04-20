@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import dataclasses
+import secrets
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import PurePosixPath
 from typing import Any, Callable
 
@@ -23,13 +25,37 @@ class MediaWallService:
     def __init__(self, config: BackendConfig) -> None:
         self.config = config
         self.db = MediaWallDB(config.media_wall.database_path)
-        self.scanner = OpenListScanner(config.media_wall)
+        self.scanner = OpenListScanner(config.media_wall, db=self.db)
         self._category_locks: dict[str, threading.Lock] = {}
         self._category_locks_guard = threading.Lock()
         self._config_listeners: list[ConfigListener] = []
         self._category_tree_cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self._category_tree_cache_lock = threading.Lock()
         self._category_tree_cache_ttl = 60.0
+        self._playlist_cache: dict[str, tuple[float, str]] = {}
+        self._playlist_cache_lock = threading.Lock()
+        self._playlist_ttl = 600.0
+        self._yaml_cache: tuple[float, dict[str, Any]] | None = None
+        self._yaml_cache_lock = threading.Lock()
+
+    def _load_config_cached(self) -> dict[str, Any]:
+        try:
+            from pathlib import Path
+
+            path = Path("config.yml")
+            mtime = path.stat().st_mtime if path.exists() else 0.0
+        except OSError:
+            mtime = 0.0
+        with self._yaml_cache_lock:
+            if self._yaml_cache and self._yaml_cache[0] == mtime:
+                return self._yaml_cache[1]
+            data = load_config()
+            self._yaml_cache = (mtime, data)
+            return data
+
+    def _invalidate_yaml_cache(self) -> None:
+        with self._yaml_cache_lock:
+            self._yaml_cache = None
 
     def register_config_listener(self, listener: ConfigListener) -> None:
         self._config_listeners.append(listener)
@@ -74,10 +100,10 @@ class MediaWallService:
         return payload
 
     def get_settings(self) -> dict[str, Any]:
-        return load_config()
+        return self._load_config_cached()
 
     def authenticate_access(self, passcode: str) -> dict[str, Any] | None:
-        config = load_config()
+        config = self._load_config_cached()
         frontend = config.get("frontend") or {}
         admin_passcode = str(frontend.get("admin_passcode") or "admin").strip()
         visitor_passcode = str(frontend.get("visitor_passcode") or "yancj").strip()
@@ -90,7 +116,7 @@ class MediaWallService:
     def is_admin_passcode(self, passcode: str | None) -> bool:
         if not passcode:
             return False
-        config = load_config()
+        config = self._load_config_cached()
         frontend = config.get("frontend") or {}
         admin_passcode = str(frontend.get("admin_passcode") or "admin").strip()
         return bool(admin_passcode) and str(passcode).strip() == admin_passcode
@@ -116,6 +142,7 @@ class MediaWallService:
         merged["media_wall"] = media_wall
 
         save_config(merged)
+        self._invalidate_yaml_cache()
 
         reload_result = self._apply_config_reload()
 
@@ -372,26 +399,22 @@ class MediaWallService:
     def _get_fs_info_with_refresh(
         self, normalized_path: str
     ) -> tuple[str, dict[str, Any] | None]:
-        with OpenListClient(
-            self.config.media_wall.openlist_base_url,
-            token=self.config.media_wall.openlist_token,
-        ) as client:
-            self.scanner._ensure_openlist_auth(client)
+        client = self.scanner.get_client()
+        try:
+            payload = client.get_fs_info(normalized_path)
+            return normalized_path, payload if isinstance(payload, dict) else None
+        except (OpenListHTTPError, OpenListAPIError) as exc:
+            if not self._should_refresh_missing_file(exc):
+                raise
+            refreshed_path = self._refresh_for_missing_path(normalized_path)
+            if not refreshed_path:
+                return normalized_path, None
             try:
-                payload = client.get_fs_info(normalized_path)
-                return normalized_path, payload if isinstance(payload, dict) else None
-            except (OpenListHTTPError, OpenListAPIError) as exc:
-                if not self._should_refresh_missing_file(exc):
-                    raise
-                refreshed_path = self._refresh_for_missing_path(normalized_path)
-                if not refreshed_path:
-                    return normalized_path, None
-                try:
-                    payload = client.get_fs_info(refreshed_path)
-                except (OpenListHTTPError, OpenListAPIError) as retry_exc:
-                    if self._should_refresh_missing_file(retry_exc):
-                        return refreshed_path, None
-                    raise
+                payload = client.get_fs_info(refreshed_path)
+            except (OpenListHTTPError, OpenListAPIError) as retry_exc:
+                if self._should_refresh_missing_file(retry_exc):
+                    return refreshed_path, None
+                raise
         return normalized_path, None
 
     @staticmethod
@@ -500,7 +523,7 @@ class MediaWallService:
                 merged[key] = value
         return merged
 
-    def record_play_history(self, media_id: int) -> None:
+    def record_play_history(self, media_id: int, file_path: str | None = None) -> None:
         media = self.db.get_media_item(media_id)
         if media:
             self.db.record_play_history(
@@ -511,6 +534,67 @@ class MediaWallService:
                 tmdb_id=int(media.get("tmdb_id")) if media.get("tmdb_id") is not None else None,
                 release_year=int(media.get("year")) if media.get("year") is not None else None,
             )
+        if file_path:
+            self.db.upsert_last_played_episode(media_id, file_path)
+
+    def get_last_played_episode(self, media_id: int) -> dict[str, Any] | None:
+        return self.db.get_last_played_episode(media_id)
+
+    def create_playlist(self, paths: list[str]) -> dict[str, Any]:
+        cleaned = [str(p).strip() for p in paths if str(p).strip()]
+        if not cleaned:
+            raise ValueError("paths is empty")
+        resolved: list[tuple[str, str | None]] = [(p, None) for p in cleaned]
+
+        def resolve(index_path: tuple[int, str]) -> tuple[int, str | None]:
+            index, path = index_path
+            try:
+                return index, self.resolve_download_url(path)
+            except Exception:
+                return index, None
+
+        workers = min(len(cleaned), 8)
+        with ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="playlist-resolve"
+        ) as pool:
+            for index, url in pool.map(resolve, enumerate(cleaned)):
+                resolved[index] = (cleaned[index], url)
+
+        lines = ["#EXTM3U"]
+        count = 0
+        for path, url in resolved:
+            if not url:
+                continue
+            name = PurePosixPath(path).name or path
+            lines.append(f"#EXTINF:-1,{name}")
+            lines.append(url)
+            count += 1
+
+        if count == 0:
+            raise ValueError("No resolvable playable URL in the given paths")
+
+        text = "\n".join(lines) + "\n"
+        playlist_id = secrets.token_urlsafe(16)
+        now = time.monotonic()
+        with self._playlist_cache_lock:
+            for key in list(self._playlist_cache.keys()):
+                created_at, _ = self._playlist_cache[key]
+                if now - created_at > self._playlist_ttl:
+                    del self._playlist_cache[key]
+            self._playlist_cache[playlist_id] = (now, text)
+        return {"id": playlist_id, "count": count}
+
+    def get_playlist(self, playlist_id: str) -> str | None:
+        now = time.monotonic()
+        with self._playlist_cache_lock:
+            entry = self._playlist_cache.get(playlist_id)
+            if not entry:
+                return None
+            created_at, text = entry
+            if now - created_at > self._playlist_ttl:
+                del self._playlist_cache[playlist_id]
+                return None
+            return text
 
     def get_recent_play_history(self, limit: int = 10) -> list[dict[str, Any]]:
         items = self.db.get_recent_play_history(limit)

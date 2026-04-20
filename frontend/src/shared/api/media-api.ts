@@ -1,9 +1,11 @@
 import { adminToken } from './config';
-import { requestJson } from './client';
+import { ApiClientError, requestJson } from './client';
 import type {
   AccessLoginResponseDto,
   AppSettingsDto,
   CategoryTreeDto,
+  CreatePlaylistResponseDto,
+  LastPlayedEpisodeDto,
   MediaDetailDto,
   MediaListQuery,
   MediaListResponseDto,
@@ -217,15 +219,36 @@ export function getRecentPlayHistory(signal?: AbortSignal) {
   return requestJson<PlayHistoryDto[]>('/recent-plays', { signal });
 }
 
-export async function recordPlayHistory(mediaId: number): Promise<void> {
+export async function recordPlayHistory(mediaId: number, filePath?: string | null): Promise<void> {
   try {
     await requestJson('/record-play', {
       method: 'POST',
-      body: JSON.stringify({ media_id: mediaId }),
+      body: JSON.stringify({ media_id: mediaId, file_path: filePath || undefined }),
     });
   } catch {
     // 播放记录失败不影响用户体验，静默处理
   }
+}
+
+export async function getLastPlayedEpisode(
+  mediaId: number,
+  signal?: AbortSignal,
+): Promise<LastPlayedEpisodeDto | null> {
+  try {
+    return await requestJson<LastPlayedEpisodeDto>(`/media/${mediaId}/last-episode`, { signal });
+  } catch (reason) {
+    if (reason instanceof ApiClientError && reason.status === 404) {
+      return null;
+    }
+    throw reason;
+  }
+}
+
+export function createPlaylist(paths: string[]) {
+  return requestJson<CreatePlaylistResponseDto>('/playlist', {
+    method: 'POST',
+    body: JSON.stringify({ paths }),
+  });
 }
 
 export function loginWithPasscode(passcode: string) {

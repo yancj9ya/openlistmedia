@@ -4,7 +4,9 @@ import { toDetailTitle } from '../entities/media/model';
 import { useMediaDetail } from '../features/media-browser/use-media-detail';
 import { ApiClientError } from '../shared/api/client';
 import {
+  createPlaylist,
   getDefaultPlayer,
+  getLastPlayedEpisode,
   getPlayLinkWithCategoryRefresh,
   getPlayerOptions,
   openWithPlayer,
@@ -31,6 +33,10 @@ export function MediaDetailPage() {
   const [refreshingDetail, setRefreshingDetail] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerType>(() => getDefaultPlayer());
+  const [lastEpisodePath, setLastEpisodePath] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [buildingPlaylist, setBuildingPlaylist] = useState(false);
   const playerOptions = useMemo(() => getPlayerOptions(), []);
   const mediaPath = data?.openlist_path || null;
   const seasonOptions = useMemo(() => {
@@ -84,6 +90,74 @@ export function MediaDetailPage() {
     }
   }, [playerOptions, selectedPlayer]);
 
+  useEffect(() => {
+    if (!mediaId) {
+      setLastEpisodePath(null);
+      return;
+    }
+    let cancelled = false;
+    getLastPlayedEpisode(Number(mediaId))
+      .then((result) => {
+        if (!cancelled) setLastEpisodePath(result?.file_path ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setLastEpisodePath(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  useEffect(() => {
+    if (!selectionMode) {
+      setSelectedPaths([]);
+    }
+  }, [selectionMode]);
+
+  function togglePath(path: string) {
+    setSelectedPaths((current) =>
+      current.includes(path) ? current.filter((p) => p !== path) : [...current, path],
+    );
+  }
+
+  async function handleMergePlay() {
+    if (selectedPaths.length === 0 || buildingPlaylist) return;
+    try {
+      setBuildingPlaylist(true);
+      setActionMessage(null);
+      const result = await createPlaylist(selectedPaths);
+      const m3uUrl = `${window.location.origin}/api/v1/playlist/${result.id}.m3u`;
+      await openWithPlayer(selectedPlayer, m3uUrl);
+      setActionMessage(`已提交 ${result.count} 集播放列表给播放器。`);
+      setSelectionMode(false);
+      setSelectedPaths([]);
+    } catch (reason) {
+      if (reason instanceof ApiClientError) {
+        setActionMessage(reason.message);
+        return;
+      }
+      if (reason instanceof Error) {
+        setActionMessage(reason.message);
+        return;
+      }
+      setActionMessage('生成播放列表失败，请稍后重试。');
+    } finally {
+      setBuildingPlaylist(false);
+    }
+  }
+
+  function handleSelectAfterLastPlayed() {
+    if (!lastEpisodePath || !activeEpisodes.length) return;
+    const index = activeEpisodes.findIndex((file) => file.path === lastEpisodePath);
+    if (index < 0 || index >= activeEpisodes.length - 1) return;
+    const nextPaths = activeEpisodes.slice(index + 1).map((file) => file.path);
+    setSelectedPaths((current) => {
+      const merged = new Set(current);
+      nextPaths.forEach((p) => merged.add(p));
+      return Array.from(merged);
+    });
+  }
+
   async function handlePlay(path: string) {
   try {
     setLoadingPath(path);
@@ -94,7 +168,8 @@ export function MediaDetailPage() {
       return;
     }
     if (mediaId) {
-      recordPlayHistory(Number(mediaId));
+      recordPlayHistory(Number(mediaId), path);
+      setLastEpisodePath(path);
     }
     const message = await openWithPlayer(selectedPlayer, payload.playable_url);
     setActionMessage(message);
@@ -208,6 +283,13 @@ export function MediaDetailPage() {
                         {option.label}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      className={`detail-player-button${selectionMode ? ' active' : ''}`}
+                      onClick={() => setSelectionMode((current) => !current)}
+                    >
+                      {selectionMode ? '退出多选' : '多选'}
+                    </button>
                   </div>
                 </div>
                 {seasonOptions.length > 1 ? (
@@ -228,20 +310,77 @@ export function MediaDetailPage() {
                   </>
                 ) : null}
                 <div className="detail-episode-grid">
-                  {activeEpisodes.map((file, index) => (
-                    <button
-                      key={`${file.path}-${file.name}`}
-                      type="button"
-                      className={`detail-episode-button${loadingPath === file.path ? ' loading' : ''}`}
-                      onClick={() => handlePlay(file.path)}
-                      disabled={loadingPath === file.path || refreshingDetail}
-                      title={file.name}
-                    >
-                      {loadingPath === file.path ? '...' : formatEpisodeLabel(index)}
-                    </button>
-                  ))}
+                  {activeEpisodes.map((file, index) => {
+                    const isLastPlayed = !selectionMode && lastEpisodePath === file.path;
+                    const isSelected = selectionMode && selectedPaths.includes(file.path);
+                    const isLoading = loadingPath === file.path && !selectionMode;
+                    const className = [
+                      'detail-episode-button',
+                      isLoading ? 'loading' : '',
+                      isLastPlayed ? 'last-played' : '',
+                      isSelected ? 'selected' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    return (
+                      <button
+                        key={`${file.path}-${file.name}`}
+                        type="button"
+                        className={className}
+                        onClick={() => {
+                          if (selectionMode) {
+                            togglePath(file.path);
+                          } else {
+                            handlePlay(file.path);
+                          }
+                        }}
+                        disabled={!selectionMode && (isLoading || refreshingDetail)}
+                        title={file.name}
+                      >
+                        {isLoading ? '...' : formatEpisodeLabel(index)}
+                      </button>
+                    );
+                  })}
                   {!activeEpisodes.length ? <div className="muted-text">暂无剧集。</div> : null}
                 </div>
+                {selectionMode ? (
+                  <div className="detail-selection-bar">
+                    <span className="detail-selection-bar-count">已选 {selectedPaths.length} 集</span>
+                    <div className="detail-selection-bar-actions">
+                      {(() => {
+                        if (!lastEpisodePath) return null;
+                        const idx = activeEpisodes.findIndex((file) => file.path === lastEpisodePath);
+                        if (idx < 0 || idx >= activeEpisodes.length - 1) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={handleSelectAfterLastPlayed}
+                            disabled={buildingPlaylist}
+                            title="从上次播放的集之后全部选中"
+                          >
+                            续选此后
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() => setSelectedPaths([])}
+                        disabled={selectedPaths.length === 0 || buildingPlaylist}
+                      >
+                        清除
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleMergePlay}
+                        disabled={selectedPaths.length === 0 || buildingPlaylist}
+                      >
+                        {buildingPlaylist ? '生成中...' : '合并播放'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

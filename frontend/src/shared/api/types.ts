@@ -191,3 +191,13 @@ export interface SaveSettingsResponseDto {
   restart_required: boolean;
   changed_fields: string[];
 }
+
+export interface LastPlayedEpisodeDto {
+  file_path: string;
+  played_at: number;
+}
+
+export interface CreatePlaylistResponseDto {
+  id: string;
+  count: number;
+}

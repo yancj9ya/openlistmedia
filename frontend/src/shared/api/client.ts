@@ -51,6 +51,20 @@ export async function requestJson<T>(
 
   if (!response.ok || !payload?.success) {
     const error = payload && !payload.success ? payload.error : undefined;
+    if (
+      typeof window !== 'undefined' &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      const event = new CustomEvent('openlistmedia:auth-expired', {
+        detail: {
+          status: response.status,
+          code: error?.code,
+          message: error?.message,
+          path,
+        },
+      });
+      window.dispatchEvent(event);
+    }
     throw new ApiClientError(
       response.status,
       error?.code || 'http_error',

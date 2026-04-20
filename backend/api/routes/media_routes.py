@@ -7,7 +7,7 @@ from backend.dto.media_dto import (
     to_media_detail_dto,
     to_media_list_item_dto,
 )
-from backend.dto.responses import error_response, ok_response, paginated_response
+from backend.dto.responses import RawResponse, error_response, ok_response, paginated_response
 
 
 class MediaRoutes:
@@ -63,6 +63,17 @@ class MediaRoutes:
             )
             response["data"]["years"] = payload.get("years", [])
             return 200, response
+        if path.startswith(f"{self.api_prefix}/media/") and path.endswith(
+            "/last-episode"
+        ):
+            media_id_text = path[len(f"{self.api_prefix}/media/") : -len("/last-episode")]
+            media_id = self._parse_int(media_id_text, default=0)
+            if media_id <= 0:
+                return error_response("bad_request", "Invalid media id.", 400)
+            payload = self.service.get_last_played_episode(media_id)
+            if payload is None:
+                return error_response("not_found", "No last played episode.", 404)
+            return 200, ok_response(payload)
         if path.startswith(f"{self.api_prefix}/media/"):
             media_id_text = path.rsplit("/", 1)[-1]
             media_id = self._parse_int(media_id_text, default=0)
@@ -81,6 +92,16 @@ class MediaRoutes:
         if path == f"{self.api_prefix}/recent-plays":
             payload = self.service.get_recent_play_history(limit=10)
             return 200, ok_response(payload)
+        if path.startswith(f"{self.api_prefix}/playlist/") and path.endswith(".m3u"):
+            playlist_id = path[len(f"{self.api_prefix}/playlist/") : -len(".m3u")]
+            if not playlist_id:
+                return error_response("bad_request", "Missing playlist id.", 400)
+            text = self.service.get_playlist(playlist_id)
+            if text is None:
+                return error_response("not_found", "Playlist not found or expired.", 404)
+            return 200, RawResponse(
+                body=text.encode("utf-8"), content_type="audio/x-mpegurl; charset=utf-8"
+            )
         return error_response("not_found", "Route not found.", 404)
 
     def handle_post(self, path: str, payload: dict, headers) -> tuple[int, dict]:
@@ -88,8 +109,10 @@ class MediaRoutes:
             media_id = payload.get("media_id")
             if not media_id:
                 return error_response("bad_request", "Missing field: media_id", 400)
+            file_path = payload.get("file_path")
+            file_path = str(file_path).strip() if file_path else None
             try:
-                self.service.record_play_history(int(media_id))
+                self.service.record_play_history(int(media_id), file_path or None)
                 return 200, ok_response({"recorded": True})
             except (ValueError, TypeError):
                 return error_response("bad_request", "Invalid media_id", 400)
@@ -106,6 +129,17 @@ class MediaRoutes:
             if not media_path:
                 return error_response("bad_request", "Missing field: path", 400)
             return 200, ok_response(self.service.get_play_link(media_path))
+        if path == f"{self.api_prefix}/playlist":
+            raw_paths = payload.get("paths")
+            if not isinstance(raw_paths, list) or not raw_paths:
+                return error_response(
+                    "bad_request", "Missing or invalid field: paths", 400
+                )
+            try:
+                result = self.service.create_playlist([str(p) for p in raw_paths])
+            except ValueError as exc:
+                return error_response("bad_request", str(exc), 400)
+            return 200, ok_response(result)
         if path == f"{self.api_prefix}/settings":
             passcode = headers.get("X-Access-Passcode")
             if not self.service.is_admin_passcode(passcode):
