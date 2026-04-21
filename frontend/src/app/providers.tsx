@@ -24,6 +24,7 @@ export const AUTH_EXPIRED_EVENT = 'openlistmedia:auth-expired';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function readStoredAuth(): AuthState | null {
   if (typeof window === 'undefined') {
     return null;
@@ -146,6 +147,7 @@ export function AppProviders({ children }: PropsWithChildren) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
