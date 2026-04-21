@@ -16,7 +16,7 @@ media_wall:
   site_dir: media_wall_site
   port: 8000
   item_url_template: http://127.0.0.1:5244/d{path}?sign={sign}
-  database_path: media_wall.db
+  database_path: data/media_wall.db
   cache_ttl_seconds: 86400
   refresh_cron: ''
   list_retry_count: 2

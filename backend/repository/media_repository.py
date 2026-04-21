@@ -33,20 +33,15 @@ class MediaWallDB:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self._init_db()
-        except sqlite3.OperationalError:
-            fallback = Path(".cache") / "media_wall_fallback.db"
-            fallback.parent.mkdir(parents=True, exist_ok=True)
-            self.path = fallback
-            self._init_db()
+        self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=MEMORY")
-        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def _init_db(self) -> None:
@@ -143,6 +138,25 @@ class MediaWallDB:
                 """
                 CREATE INDEX IF NOT EXISTS idx_play_history_played_at
                 ON play_history(played_at DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS episode_last_played (
+                    media_id INTEGER PRIMARY KEY,
+                    file_path TEXT NOT NULL,
+                    played_at INTEGER NOT NULL,
+                    FOREIGN KEY(media_id) REFERENCES media_items(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tmdb_cache (
+                    cache_key TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    fetched_at INTEGER NOT NULL
+                )
                 """
             )
             conn.commit()
@@ -359,6 +373,14 @@ class MediaWallDB:
         if not row:
             return False
         return int(time.time()) - int(row["scanned_at"]) < ttl_seconds
+
+    def category_cache_exists(self, category_path: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM category_cache WHERE category_path = ? LIMIT 1",
+                (category_path,),
+            ).fetchone()
+        return row is not None
 
     def query_media_items(self, options: MediaQueryOptions) -> MediaQueryResult:
         page = max(options.page, 1)
@@ -597,3 +619,57 @@ class MediaWallDB:
         payload["db_id"] = row["id"]
         payload["category_path"] = row["category_path"]
         return payload
+
+    def upsert_last_played_episode(self, media_id: int, file_path: str) -> None:
+        played_at = int(time.time())
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO episode_last_played(media_id, file_path, played_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(media_id) DO UPDATE SET
+                    file_path = excluded.file_path,
+                    played_at = excluded.played_at
+                """,
+                (media_id, file_path, played_at),
+            )
+            conn.commit()
+
+    def get_last_played_episode(self, media_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT file_path, played_at FROM episode_last_played WHERE media_id = ?",
+                (media_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {"file_path": row["file_path"], "played_at": int(row["played_at"])}
+
+    def load_all_tmdb_cache(self) -> dict[str, dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT cache_key, payload_json FROM tmdb_cache"
+            ).fetchall()
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                result[row["cache_key"]] = json.loads(row["payload_json"])
+            except json.JSONDecodeError:
+                continue
+        return result
+
+    def upsert_tmdb_cache(self, cache_key: str, payload: dict[str, Any]) -> None:
+        fetched_at = int(time.time())
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO tmdb_cache(cache_key, payload_json, fetched_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    fetched_at = excluded.fetched_at
+                """,
+                (cache_key, payload_json, fetched_at),
+            )
+            conn.commit()

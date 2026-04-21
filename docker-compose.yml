@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     volumes:
       - ./config.yml:/app/config.yml
-      - ./media_wall.db:/app/media_wall.db
+      - ./data:/app/data
+      - ./data/cache:/app/.cache
       - ./media_wall_site/data:/app/media_wall_site/data
     restart: unless-stopped
