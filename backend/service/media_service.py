@@ -215,7 +215,7 @@ class MediaWallService:
                 else:
                     with self._get_category_lock(normalized_path):
                         if not self.db.cache_is_fresh(normalized_path, ttl):
-                            self._refresh_category_locked(normalized_path)
+                            self._refresh_category_shallow_locked(normalized_path)
         query_result = self.db.query_media_items(
             MediaQueryOptions(
                 category_path=normalized_path,
@@ -246,7 +246,7 @@ class MediaWallService:
 
         def run() -> None:
             try:
-                self._refresh_category_locked(normalized_path)
+                self._refresh_category_shallow_locked(normalized_path)
             except Exception as exc:
                 print(f"Background refresh failed for {normalized_path}: {exc}")
             finally:
@@ -262,6 +262,17 @@ class MediaWallService:
         item = self.db.get_media_item(media_id)
         if item is None:
             return None
+        if self._needs_detail_scan(item):
+            media_path = str(item.get("openlist_path") or "").strip()
+            if media_path:
+                refreshed = self.refresh_media_item(
+                    media_path, force_remote_refresh=False
+                )
+                refreshed_id = refreshed.get("media_id")
+                item = self.db.get_media_item(int(refreshed_id or media_id))
+                if item is None:
+                    return None
+        item = self._ensure_media_poster(item)
         files = []
         for file_item in item.get("files") or []:
             files.append(
@@ -273,6 +284,33 @@ class MediaWallService:
         item["files"] = files
         item["playable_url"] = None
         return item
+
+    def _ensure_media_poster(self, item: dict[str, Any]) -> dict[str, Any]:
+        if item.get("poster_url"):
+            return item
+        updated = self.scanner.fill_missing_media_poster(item)
+        if updated is item or not updated.get("poster_url"):
+            return item
+        category_path = str(item.get("category_path") or "").strip()
+        media_path = str(item.get("openlist_path") or "").strip()
+        if not category_path or not media_path:
+            return updated
+        try:
+            self.db.replace_media_item(category_path, media_path, updated)
+            refreshed = self.db.get_media_item_by_path(category_path, media_path)
+            if refreshed is not None:
+                return refreshed
+        except ValueError as exc:
+            print(f"Poster cache update skipped for {media_path}: {exc}")
+        return updated
+
+    @staticmethod
+    def _needs_detail_scan(item: dict[str, Any]) -> bool:
+        if item.get("scan_level") == "shallow":
+            return True
+        if item.get("detail_scanned_at"):
+            return False
+        return not (item.get("files") or item.get("seasons"))
 
     def get_play_link(self, path: str) -> dict[str, Any]:
         playable_url = self.resolve_download_url(path)
@@ -295,6 +333,15 @@ class MediaWallService:
                 normalized_path, force_remote_refresh=force_remote_refresh
             )
 
+    def refresh_category_shallow(
+        self, category_path: str, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
+        normalized_path = OpenListScanner.normalize_path(category_path)
+        with self._get_category_lock(normalized_path):
+            return self._refresh_category_shallow_locked(
+                normalized_path, force_remote_refresh=force_remote_refresh
+            )
+
     def _refresh_category_locked(
         self, normalized_path: str, *, force_remote_refresh: bool = False
     ) -> dict[str, Any]:
@@ -309,6 +356,104 @@ class MediaWallService:
         )
         payload["cache_hit"] = False
         self._invalidate_category_tree_cache()
+        return payload
+
+    def _refresh_category_shallow_locked(
+        self, normalized_path: str, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
+        existing_items = self._get_existing_items_by_path(normalized_path)
+        payload = self.scanner.scan_category_shallow(
+            normalized_path,
+            refresh=force_remote_refresh,
+            existing_items=existing_items,
+        )
+        payload = self._merge_shallow_payload_with_existing(
+            normalized_path, payload, existing_items=existing_items
+        )
+        self.db.upsert_category_cache(
+            category_path=normalized_path,
+            category_name=payload["category_name"],
+            parent_path=payload.get("parent_path"),
+            payload=payload,
+        )
+        payload["cache_hit"] = False
+        self._invalidate_category_tree_cache()
+        return payload
+
+    def _get_existing_items_by_path(
+        self, normalized_path: str
+    ) -> dict[str, dict[str, Any]]:
+        cached = self.db.get_category_cache(normalized_path) or {}
+        return {
+            str(item.get("openlist_path") or "").strip(): item
+            for item in cached.get("items") or []
+            if str(item.get("openlist_path") or "").strip()
+        }
+
+    def _merge_shallow_payload_with_existing(
+        self,
+        normalized_path: str,
+        payload: dict[str, Any],
+        *,
+        existing_items: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        existing_by_path = existing_items or self._get_existing_items_by_path(
+            normalized_path
+        )
+        merged_items: list[dict[str, Any]] = []
+        for shallow in payload.get("items") or []:
+            media_path = str(shallow.get("openlist_path") or "").strip()
+            existing = existing_by_path.get(media_path)
+            if existing:
+                if (
+                    existing.get("scan_level") == "detail"
+                    or existing.get("detail_scanned_at")
+                ):
+                    merged = {**existing}
+                    merged.update(
+                        {
+                            "title": shallow.get("title"),
+                            "year": shallow.get("year"),
+                            "tmdb_id": shallow.get("tmdb_id"),
+                            "category_path": shallow.get("category_path"),
+                            "category_label": shallow.get("category_label"),
+                            "openlist_path": shallow.get("openlist_path"),
+                            "openlist_url": shallow.get("openlist_url"),
+                        }
+                    )
+                else:
+                    merged = {**shallow}
+                    for key in (
+                        "type",
+                        "display_title",
+                        "original_title",
+                        "overview",
+                        "vote_average",
+                        "genres",
+                        "release_date",
+                        "poster_path",
+                        "poster_url",
+                        "backdrop_path",
+                        "backdrop_url",
+                    ):
+                        if existing.get(key) not in (None, "", []):
+                            merged[key] = existing.get(key)
+            else:
+                merged = shallow
+            merged_items.append(merged)
+        payload["items"] = merged_items
+        stats = payload.setdefault("stats", {})
+        stats["item_count"] = len(merged_items)
+        stats["movie_count"] = sum(
+            1 for item in merged_items if item.get("type") == "movie"
+        )
+        stats["tv_count"] = sum(
+            1 for item in merged_items if item.get("type") == "tv"
+        )
+        stats["episode_count"] = sum(
+            int(item.get("episode_count") or 0) for item in merged_items
+        )
+        stats["failed_path_count"] = len(payload.get("failed_paths") or [])
         return payload
 
     def refresh_media_item(

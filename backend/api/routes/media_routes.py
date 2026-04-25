@@ -184,7 +184,7 @@ class MediaRoutes:
             return error_response(
                 "bad_request", "Missing field: category_path or media_path", 400
             )
-        refreshed = self.service.refresh_category(
+        refreshed = self.service.refresh_category_shallow(
             category_path, force_remote_refresh=True
         )
         return 200, ok_response(
