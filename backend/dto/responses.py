@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass
+class RawResponse:
+    body: bytes
+    content_type: str
 
 
 def ok_response(data: Any, message: str = "ok") -> dict[str, Any]:

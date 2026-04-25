@@ -20,9 +20,11 @@ interface AuthContextValue {
 
 export const AUTH_STORAGE_KEY = 'openlistmedia:auth';
 export const THEME_STORAGE_KEY = 'openlistmedia:theme';
+export const AUTH_EXPIRED_EVENT = 'openlistmedia:auth-expired';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function readStoredAuth(): AuthState | null {
   if (typeof window === 'undefined') {
     return null;
@@ -53,7 +55,13 @@ function readStoredTheme(): ThemeMode {
     return 'dark';
   }
   const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return raw === 'light' ? 'light' : 'dark';
+  if (raw === 'light' || raw === 'dark') {
+    return raw;
+  }
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+    return 'light';
+  }
+  return 'dark';
 }
 
 export function AppProviders({ children }: PropsWithChildren) {
@@ -79,6 +87,50 @@ export function AppProviders({ children }: PropsWithChildren) {
     window.document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    function onStorage(event: StorageEvent) {
+      if (event.key === AUTH_STORAGE_KEY) {
+        setAuth(readStoredAuth());
+      }
+      if (event.key === THEME_STORAGE_KEY) {
+        const next = event.newValue;
+        if (next === 'light' || next === 'dark') {
+          setTheme(next);
+        }
+      }
+    }
+    function onAuthExpired() {
+      setAuth(null);
+    }
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const query = window.matchMedia('(prefers-color-scheme: light)');
+    function onChange(event: MediaQueryListEvent) {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored === 'light' || stored === 'dark') {
+        return;
+      }
+      setTheme(event.matches ? 'light' : 'dark');
+    }
+    query.addEventListener('change', onChange);
+    return () => {
+      query.removeEventListener('change', onChange);
+    };
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       auth,
@@ -95,6 +147,7 @@ export function AppProviders({ children }: PropsWithChildren) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

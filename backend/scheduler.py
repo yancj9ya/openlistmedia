@@ -100,6 +100,18 @@ class ScheduledRefreshRunner:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5)
 
+    def reload(self, cron_expression: str | None) -> None:
+        new_cron = (cron_expression or "").strip()
+        if new_cron == self.cron_expression:
+            return
+        self.stop()
+        self._stop_event = threading.Event()
+        self._run_lock = threading.Lock()
+        self._thread = None
+        self.cron_expression = new_cron
+        self.schedule = CronExpression.parse(new_cron) if new_cron else None
+        self.start()
+
     def _run_loop(self) -> None:
         assert self.schedule is not None
         while not self._stop_event.is_set():

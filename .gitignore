@@ -2,7 +2,9 @@
 config.yml
 .env
 *.local
-.claude/settings.local.json
+.claude/
+.cospec/
+.omc/
 
 # Python runtime/cache files
 __pycache__/
@@ -22,6 +24,7 @@ frontend/.vite/
 # Runtime SQLite/cache data
 media_wall.db
 media_wall.db-*
+media_wall.db.*
 *.db
 *.db-*
 media_wall_site/data/*.json

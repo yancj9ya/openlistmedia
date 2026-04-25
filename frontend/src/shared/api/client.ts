@@ -31,18 +31,40 @@ export async function requestJson<T>(
   options?: RequestInit,
   query?: Record<string, string | number | undefined>,
 ): Promise<T> {
-  const response = await fetch(`${buildApiUrl(path)}${toQueryString(query)}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options?.headers || {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${buildApiUrl(path)}${toQueryString(query)}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+    });
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === 'AbortError') {
+      throw reason;
+    }
+    throw new ApiClientError(0, 'network_error', reason instanceof Error ? reason.message : 'Network request failed');
+  }
 
   const payload = (await response.json().catch(() => null)) as ApiSuccessResponse<T> | ApiErrorResponse | null;
 
   if (!response.ok || !payload?.success) {
     const error = payload && !payload.success ? payload.error : undefined;
+    if (
+      typeof window !== 'undefined' &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      const event = new CustomEvent('openlistmedia:auth-expired', {
+        detail: {
+          status: response.status,
+          code: error?.code,
+          message: error?.message,
+          path,
+        },
+      });
+      window.dispatchEvent(event);
+    }
     throw new ApiClientError(
       response.status,
       error?.code || 'http_error',

@@ -75,10 +75,15 @@ export function SettingsPage() {
     setError(null);
     setMessage(null);
     try {
-      const payload = await saveSettings(settings);
-      setSettings(payload);
-      setSkipDirectoriesInput((payload.media_wall.skip_directories || []).join(' | '));
-      setMessage('配置已保存到 config.yml');
+      const response = await saveSettings(settings);
+      setSettings(response.settings);
+      setSkipDirectoriesInput((response.settings.media_wall.skip_directories || []).join(' | '));
+      if (response.restart_required) {
+        const fields = (response.changed_fields || []).join('、') || 'backend.host / backend.port';
+        setMessage(`配置已保存，但 ${fields} 变更需要手动重启后端进程才会生效。`);
+      } else {
+        setMessage('配置已保存并实时生效。');
+      }
     } catch (reason) {
       if (reason instanceof ApiClientError) {
         setError(reason.message);

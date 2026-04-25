@@ -1,0 +1,172 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776658394934,
+  "projectRoot": "I:\\Code\\PythonCode\\openlistmedia",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "backend": {
+      "path": "backend",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1776658394915,
+      "keyFiles": [
+        "app.py",
+        "main.py",
+        "scheduler.py",
+        "__init__.py"
+      ]
+    },
+    "frontend": {
+      "path": "frontend",
+      "purpose": null,
+      "fileCount": 12,
+      "lastAccessed": 1776658394916,
+      "keyFiles": [
+        "index.html",
+        "package-lock.json",
+        "package.json",
+        "tsconfig.app.json",
+        "tsconfig.app.tsbuildinfo"
+      ]
+    },
+    "media_wall_site": {
+      "path": "media_wall_site",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1776658394916,
+      "keyFiles": [
+        "app.js",
+        "index.html",
+        "styles.css"
+      ]
+    },
+    "openlist_sdk": {
+      "path": "openlist_sdk",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1776658394916,
+      "keyFiles": [
+        "client.py",
+        "exceptions.py",
+        "__init__.py"
+      ]
+    },
+    "openlist_sdk.egg-info": {
+      "path": "openlist_sdk.egg-info",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1776658394916,
+      "keyFiles": [
+        "dependency_links.txt",
+        "PKG-INFO",
+        "requires.txt",
+        "SOURCES.txt",
+        "top_level.txt"
+      ]
+    },
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 58,
+      "lastAccessed": 1776658394917,
+      "keyFiles": [
+        "config_loader.cpython-313.pyc",
+        "config_loader.cpython-313.pyc.1195577029696",
+        "config_loader.cpython-313.pyc.1538419831872",
+        "config_loader.cpython-313.pyc.1576055518272",
+        "config_loader.cpython-313.pyc.1635114000752"
+      ]
+    },
+    "backend\\api": {
+      "path": "backend\\api",
+      "purpose": "API routes",
+      "fileCount": 2,
+      "lastAccessed": 1776658394917,
+      "keyFiles": [
+        "server.py",
+        "__init__.py"
+      ]
+    },
+    "backend\\config": {
+      "path": "backend\\config",
+      "purpose": "Configuration files",
+      "fileCount": 2,
+      "lastAccessed": 1776658394918,
+      "keyFiles": [
+        "settings.py",
+        "__init__.py"
+      ]
+    },
+    "frontend\\dist": {
+      "path": "frontend\\dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1776658394918,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "frontend\\node_modules": {
+      "path": "frontend\\node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1776658394919,
+      "keyFiles": []
+    },
+    "frontend\\src": {
+      "path": "frontend\\src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1776658394919,
+      "keyFiles": [
+        "main.tsx",
+        "vite-env.d.ts"
+      ]
+    },
+    "media_wall_site\\data": {
+      "path": "media_wall_site\\data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1776658394920,
+      "keyFiles": [
+        "library.json"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
