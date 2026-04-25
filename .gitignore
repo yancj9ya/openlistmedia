@@ -1,10 +1,33 @@
+# Local configuration and secrets
 config.yml
+.env
+*.local
+.claude/settings.local.json
+
+# Python runtime/cache files
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 .cache/
+.venv/
+venv/
+
+# Frontend dependencies/build artifacts
 frontend/dist/
 frontend/node_modules/
 frontend/.vite/
 *.tsbuildinfo
+
+# Runtime SQLite/cache data
+media_wall.db
+media_wall.db-*
+*.db
+*.db-*
+media_wall_site/data/*.json
+
+# Tool/editor local files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

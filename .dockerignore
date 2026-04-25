@@ -1,14 +1,31 @@
 .git
 .gitignore
+
+# Local configuration and secrets
+config.yml
+.env
+*.local
+.claude/
+.cospec/
+
+# Python runtime/cache files
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 .cache/
+.venv/
+venv/
+
+# Frontend dependencies/build artifacts
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
+
+# Runtime SQLite/cache data
 media_wall.db
-config.yml
-.cospec/
+media_wall.db-*
+*.db
+*.db-*
+media_wall_site/data/*.json
