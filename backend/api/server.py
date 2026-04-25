@@ -5,6 +5,7 @@ import json
 import mimetypes
 from pathlib import Path
 import socketserver
+import time
 from urllib.parse import urlparse
 
 from backend.dto.responses import RawResponse, error_response
@@ -22,22 +23,30 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        started = time.perf_counter()
         parsed = urlparse(self.path)
+        self._log_request_start("GET", parsed.path, parsed.query)
         try:
             status, payload = self.routes.handle(
                 parsed.path, parsed.query, self.headers
             )
         except Exception as exc:
             status, payload = error_response("internal_error", str(exc), 500)
+            self._log_request_error("GET", parsed.path, exc)
         if isinstance(payload, RawResponse):
             self._send_raw(status, payload)
+            self._log_request_done("GET", parsed.path, status, started)
             return
         if status == 404 and self._try_serve_frontend(parsed.path):
+            self._log_request_done("GET", parsed.path, 200, started)
             return
         self._send_json(status, payload)
+        self._log_request_done("GET", parsed.path, status, started)
 
     def do_POST(self) -> None:
+        started = time.perf_counter()
         parsed = urlparse(self.path)
+        self._log_request_start("POST", parsed.path, "")
         body = self.rfile.read(int(self.headers.get("Content-Length", "0") or "0"))
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
@@ -46,6 +55,7 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
             status, response = error_response("bad_request", str(exc), 400)
             self._send_json(status, response)
+            self._log_request_done("POST", parsed.path, status, started)
             return
         try:
             status, response = self.routes.handle_post(
@@ -53,10 +63,25 @@ class BackendHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             )
         except Exception as exc:
             status, response = error_response("internal_error", str(exc), 500)
+            self._log_request_error("POST", parsed.path, exc)
         self._send_json(status, response)
+        self._log_request_done("POST", parsed.path, status, started)
 
     def log_message(self, format: str, *args) -> None:
         return
+
+    def _log_request_start(self, method: str, path: str, query: str) -> None:
+        query_text = f"?{query}" if query else ""
+        print(f"[api] -> {method} {path}{query_text}")
+
+    def _log_request_done(
+        self, method: str, path: str, status: int, started: float
+    ) -> None:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        print(f"[api] <- {method} {path} {status} {elapsed_ms:.1f}ms")
+
+    def _log_request_error(self, method: str, path: str, exc: Exception) -> None:
+        print(f"[api] !! {method} {path} failed: {exc}")
 
     def _send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

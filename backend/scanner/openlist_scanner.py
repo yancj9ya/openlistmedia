@@ -95,6 +95,10 @@ class OpenListScanner:
         self, category_path: str, *, refresh: bool = False
     ) -> dict[str, Any]:
         category_path = self.normalize_path(category_path)
+        print(
+            "[scanner] deep category scan start "
+            f"path={category_path} openlist_refresh={refresh}"
+        )
         category_name = (
             category_path.rstrip("/").split("/")[-1] if category_path != "/" else "/"
         )
@@ -119,6 +123,11 @@ class OpenListScanner:
         payload = self._build_category_payload(
             category_path, category_name, items, refresh
         )
+        print(
+            "[scanner] deep category scan done "
+            f"path={category_path} items={len(items)} "
+            f"failed={len(self.failed_paths)}"
+        )
         self._save_tmdb_cache()
         return payload
 
@@ -130,6 +139,10 @@ class OpenListScanner:
         existing_items: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         category_path = self.normalize_path(category_path)
+        print(
+            "[scanner] shallow category scan start "
+            f"path={category_path} openlist_refresh={refresh}"
+        )
         category_name = (
             category_path.rstrip("/").split("/")[-1] if category_path != "/" else "/"
         )
@@ -178,12 +191,18 @@ class OpenListScanner:
                         [parent_name],
                         media_match,
                         tmdb_client,
+                        self._infer_media_type_from_path(category_path),
                     )
                 )
         finally:
             if tmdb_client:
                 tmdb_client.close()
         items.sort(key=lambda item: (item["type"], item["title"].lower()))
+        print(
+            "[scanner] shallow category scan done "
+            f"path={category_path} items={len(items)} reused={len(items) - len(missing_metadata)} "
+            f"new={len(missing_metadata)} failed={len(self.failed_paths)}"
+        )
         self._save_tmdb_cache()
         return self._build_category_payload(
             category_path, category_name, items, refresh
@@ -193,6 +212,10 @@ class OpenListScanner:
         self, media_path: str, *, refresh: bool = False
     ) -> dict[str, Any]:
         media_path = self.normalize_path(media_path)
+        print(
+            "[scanner] media item scan start "
+            f"path={media_path} openlist_refresh={refresh}"
+        )
         media_name = media_path.rstrip("/").split("/")[-1] if media_path != "/" else "/"
         media_match = MEDIA_PATTERN.match(media_name)
         if not media_match:
@@ -222,6 +245,11 @@ class OpenListScanner:
         finally:
             if tmdb_client:
                 tmdb_client.close()
+        print(
+            "[scanner] media item scan done "
+            f"path={media_path} type={item.get('type')} "
+            f"files={len(item.get('files') or [])} seasons={len(item.get('seasons') or [])}"
+        )
         self._save_tmdb_cache()
         return {
             "category_path": category_path,
@@ -427,16 +455,32 @@ class OpenListScanner:
         category_parts: list[str],
         media_match: re.Match[str],
         tmdb_client: TMDbClient | None,
+        inferred_media_type: str | None = None,
     ) -> dict[str, Any]:
         title = media_match.group("title").strip()
         year = int(media_match.group("year"))
         tmdb_id = int(media_match.group("tmdb_id"))
-        media_type = "movie"
+        media_type = inferred_media_type or "movie"
+        print(
+            "[scanner] shallow media metadata "
+            f"path={media_path} tmdb_id={tmdb_id} preferred_type={media_type}"
+        )
         metadata = self._fetch_tmdb_metadata(tmdb_client, media_type, tmdb_id)
+        if metadata and not self._metadata_matches_media_name(metadata, title, year):
+            print(
+                "[scanner] shallow media metadata mismatch "
+                f"path={media_path} type={media_type}"
+            )
+            metadata = None
         if not metadata:
-            fallback = self._fetch_tmdb_metadata(tmdb_client, "tv", tmdb_id)
-            if fallback:
-                media_type = "tv"
+            fallback_type = "tv" if media_type == "movie" else "movie"
+            fallback = self._fetch_tmdb_metadata(tmdb_client, fallback_type, tmdb_id)
+            if fallback and self._metadata_matches_media_name(fallback, title, year):
+                print(
+                    "[scanner] shallow media metadata fallback matched "
+                    f"path={media_path} type={fallback_type}"
+                )
+                media_type = fallback_type
                 metadata = fallback
         return {
             "title": title,
@@ -489,6 +533,10 @@ class OpenListScanner:
         title = media_match.group("title").strip()
         year = int(media_match.group("year"))
         tmdb_id = int(media_match.group("tmdb_id"))
+        print(
+            "[scanner] deep media directory scan start "
+            f"path={media_path} tmdb_id={tmdb_id} openlist_refresh={refresh}"
+        )
         top_level_entries = self._list_dir(client, media_path, refresh=refresh)
         files: list[dict[str, Any]] = []
         seasons: dict[int, dict[str, Any]] = {}
@@ -550,6 +598,11 @@ class OpenListScanner:
         if media_type == "tv" and not seasons:
             seasons = self._group_loose_episodes(files)
         season_list = [seasons[number] for number in sorted(seasons)]
+        print(
+            "[scanner] deep media directory scan done "
+            f"path={media_path} type={media_type} files={len(files)} "
+            f"seasons={len(season_list)}"
+        )
         for season in season_list:
             season["episodes"].sort(key=self._file_sort_key)
         files.sort(key=self._file_sort_key)
@@ -669,13 +722,25 @@ class OpenListScanner:
             self.tmdb_image_base_url = tmdb_client.configuration_details()["images"][
                 "secure_base_url"
             ]
-            media_type = str(item.get("type") or "movie")
+            media_type = str(item.get("type") or "").strip()
+            if media_type not in ("movie", "tv"):
+                media_type = self._infer_media_type_from_path(
+                    str(item.get("category_path") or item.get("openlist_path") or "")
+                ) or "movie"
             metadata = self._fetch_tmdb_metadata(
                 tmdb_client, media_type, int(tmdb_id)
             )
+            title = str(item.get("title") or "").strip()
+            year = int(item.get("year") or 0)
+            if metadata and not self._metadata_matches_media_name(
+                metadata, title, year
+            ):
+                metadata = None
             if not metadata and media_type != "tv":
                 fallback = self._fetch_tmdb_metadata(tmdb_client, "tv", int(tmdb_id))
-                if fallback:
+                if fallback and self._metadata_matches_media_name(
+                    fallback, title, year
+                ):
                     media_type = "tv"
                     metadata = fallback
             if not metadata:
@@ -711,6 +776,87 @@ class OpenListScanner:
         finally:
             tmdb_client.close()
 
+    def _infer_media_type_from_path(self, path: str) -> str | None:
+        normalized = self.normalize_path(path)
+        root = self.normalize_path(self.config.media_root)
+        if root != "/" and normalized.startswith(f"{root}/"):
+            relative = normalized[len(root) + 1 :]
+        else:
+            relative = normalized.lstrip("/")
+        first_part = relative.split("/", 1)[0].strip()
+        normalized_name = self._normalize_match_title(first_part)
+        if not normalized_name:
+            return None
+        exact_type_map = {
+            "电影": "movie",
+            "剧集": "tv",
+            "动漫": "tv",
+            "综艺": "tv",
+            "纪录片": "tv",
+        }
+        if first_part in exact_type_map:
+            return exact_type_map[first_part]
+        tv_keywords = (
+            "tv",
+            "show",
+            "shows",
+            "series",
+            "drama",
+            "anime",
+            "documentary",
+            "documentaries",
+            "variety",
+            "varietyshow",
+            "电视剧",
+            "剧集",
+            "连续剧",
+            "番剧",
+            "动漫",
+            "动画",
+            "综艺",
+            "纪录片",
+            "纪录",
+        )
+        movie_keywords = ("movie", "movies", "film", "films", "电影", "影片")
+        if any(keyword in normalized_name for keyword in tv_keywords):
+            return "tv"
+        if any(keyword in normalized_name for keyword in movie_keywords):
+            return "movie"
+        return None
+
+    def _metadata_matches_media_name(
+        self, metadata: dict[str, Any], title: str, year: int
+    ) -> bool:
+        release_date = metadata.get("release_date") or metadata.get("first_air_date")
+        metadata_year = None
+        if isinstance(release_date, str) and len(release_date) >= 4:
+            try:
+                metadata_year = int(release_date[:4])
+            except ValueError:
+                metadata_year = None
+        if metadata_year and year and abs(metadata_year - year) > 1:
+            return False
+        metadata_title = str(
+            metadata.get("title")
+            or metadata.get("name")
+            or metadata.get("original_title")
+            or metadata.get("original_name")
+            or ""
+        )
+        normalized_title = self._normalize_match_title(title)
+        normalized_metadata_title = self._normalize_match_title(metadata_title)
+        if normalized_title and normalized_metadata_title:
+            return (
+                normalized_title == normalized_metadata_title
+                or normalized_title in normalized_metadata_title
+                or normalized_metadata_title in normalized_title
+            )
+        return True
+
+    @staticmethod
+    def _normalize_match_title(value: str) -> str:
+        return re.sub(r"\W+", "", value, flags=re.UNICODE).casefold()
+
     def _fetch_tmdb_metadata(
         self, tmdb_client: TMDbClient | None, media_type: str, tmdb_id: int
     ) -> dict[str, Any] | None:
@@ -720,6 +866,7 @@ class OpenListScanner:
         with self._tmdb_cache_lock:
             if cache_key in self.tmdb_cache:
                 return self.tmdb_cache[cache_key]
+        print(f"[scanner] TMDb fetch type={media_type} id={tmdb_id}")
         try:
             metadata = (
                 tmdb_client.tv_details(tmdb_id, language=self.config.tmdb_language)
@@ -728,7 +875,8 @@ class OpenListScanner:
                     tmdb_id, language=self.config.tmdb_language
                 )
             )
-        except (TMDbAPIError, TMDbHTTPError):
+        except (TMDbAPIError, TMDbHTTPError) as exc:
+            print(f"[scanner] TMDb fetch failed type={media_type} id={tmdb_id}: {exc}")
             return None
         with self._tmdb_cache_lock:
             self.tmdb_cache[cache_key] = metadata
