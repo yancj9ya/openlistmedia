@@ -42,6 +42,7 @@ def to_media_detail_dto(item: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": file_item.get("name"),
                 "path": file_item.get("path"),
+                "episode_numbers": file_item.get("episode_numbers") or [],
                 "openlist_url": file_item.get("openlist_url"),
                 "direct_url": file_item.get("direct_url"),
                 "mpv_url": file_item.get("mpv_url"),
@@ -58,6 +59,7 @@ def to_media_detail_dto(item: dict[str, Any]) -> dict[str, Any]:
                     {
                         "name": episode.get("name"),
                         "path": episode.get("path"),
+                        "episode_numbers": episode.get("episode_numbers") or [],
                         "openlist_url": episode.get("openlist_url"),
                         "direct_url": episode.get("direct_url"),
                         "mpv_url": episode.get("mpv_url"),

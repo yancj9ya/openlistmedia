@@ -19,8 +19,23 @@ import type { MediaFileDto } from '../shared/api/types';
 import { formatMediaType, formatRating } from '../shared/lib/format';
 import { AsyncState } from '../shared/ui/async-state';
 
-function formatEpisodeLabel(index: number) {
-  return String(index + 1).padStart(2, '0');
+function formatEpisodeLabel(file: MediaFileDto, index: number) {
+  const episodeNumber = file.episode_numbers?.[0] ?? extractEpisodeNumber(file.name || file.path);
+  return String(episodeNumber ?? index + 1).padStart(2, '0');
+}
+
+function extractEpisodeNumber(value: string | null | undefined) {
+  if (!value) return null;
+  const name = value.split(/[\\/]/).pop() || value;
+  const seasonEpisodeMatch = /S\d{1,2}E(\d{1,3})/i.exec(name);
+  if (seasonEpisodeMatch) return Number(seasonEpisodeMatch[1]);
+
+  const stem = name.replace(/\.[^.]+$/, '');
+  const numberMatch = /(?:^|[^\d])(\d{1,3})(?:\s*(?:集|话|話|ep|episode)?)(?:[^\d]|$)/i.exec(stem);
+  if (!numberMatch) return null;
+
+  const episodeNumber = Number(numberMatch[1]);
+  return Number.isFinite(episodeNumber) ? episodeNumber : null;
 }
 
 export function MediaDetailPage() {
@@ -337,7 +352,7 @@ export function MediaDetailPage() {
                         disabled={!selectionMode && (isLoading || refreshingDetail)}
                         title={file.name}
                       >
-                        {isLoading ? '...' : formatEpisodeLabel(index)}
+                        {isLoading ? '...' : formatEpisodeLabel(file, index)}
                       </button>
                     );
                   })}

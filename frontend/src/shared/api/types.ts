@@ -59,6 +59,7 @@ export interface AppSettingsFieldString {
 export interface MediaFileDto {
   name: string;
   path: string;
+  episode_numbers?: number[];
   openlist_url?: string | null;
   playable_url?: string | null;
 }
