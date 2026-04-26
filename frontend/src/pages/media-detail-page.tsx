@@ -30,12 +30,7 @@ function extractEpisodeNumber(value: string | null | undefined) {
   const seasonEpisodeMatch = /S\d{1,2}E(\d{1,3})/i.exec(name);
   if (seasonEpisodeMatch) return Number(seasonEpisodeMatch[1]);
 
-  const stem = name.replace(/\.[^.]+$/, '');
-  const numberMatch = /(?:^|[^\d])(\d{1,3})(?:\s*(?:集|话|話|ep|episode)?)(?:[^\d]|$)/i.exec(stem);
-  if (!numberMatch) return null;
-
-  const episodeNumber = Number(numberMatch[1]);
-  return Number.isFinite(episodeNumber) ? episodeNumber : null;
+  return null;
 }
 
 export function MediaDetailPage() {
