@@ -4,10 +4,11 @@ from backend.app import create_backend_server
 
 
 def main() -> int:
-    server, config, _service, scheduler = create_backend_server()
+    server, config, service, scheduler = create_backend_server()
     print(
         f"Serving backend API at http://{config.api.host}:{config.api.port}{config.api.prefix}"
     )
+    service.ensure_initial_cache()
     scheduler.start()
     try:
         server.serve_forever()

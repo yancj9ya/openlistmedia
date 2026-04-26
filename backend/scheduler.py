@@ -125,7 +125,7 @@ class ScheduledRefreshRunner:
                 continue
             try:
                 print(f"Scheduled refresh started at {datetime.now():%Y-%m-%d %H:%M:%S}.")
-                summary = self.service.refresh_all_categories(force_remote_refresh=False)
+                summary = self.service.refresh_all_categories_shallow(force_remote_refresh=False)
                 print(
                     "Scheduled refresh completed: "
                     f"{summary['refreshed_count']} categories refreshed, "

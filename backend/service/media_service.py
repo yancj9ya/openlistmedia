@@ -37,6 +37,7 @@ class MediaWallService:
         self._playlist_ttl = 600.0
         self._yaml_cache: tuple[float, dict[str, Any]] | None = None
         self._yaml_cache_lock = threading.Lock()
+        self._all_categories_refresh_lock = threading.Lock()
 
     def _load_config_cached(self) -> dict[str, Any]:
         try:
@@ -530,14 +531,66 @@ class MediaWallService:
         }
         return payload
 
+    def ensure_initial_cache(self) -> None:
+        if self.db.list_category_caches():
+            print("[media] startup cache check: category cache exists, skip initial shallow scan.")
+            return
+        print("[media] startup cache check: no category cache, schedule full shallow scan.")
+        threading.Thread(
+            target=self._run_initial_full_shallow_refresh,
+            daemon=True,
+            name="initial-full-shallow-refresh",
+        ).start()
+
+    def _run_initial_full_shallow_refresh(self) -> None:
+        try:
+            summary = self.refresh_all_categories_shallow(force_remote_refresh=False)
+            print(
+                "[media] startup full shallow scan completed: "
+                f"{summary['refreshed_count']} categories refreshed, "
+                f"{summary['failed_count']} failures."
+            )
+        except Exception as exc:
+            print(f"[media] startup full shallow scan failed: {exc}")
+
     def refresh_all_categories(
         self, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
+        return self._refresh_all_categories(
+            force_remote_refresh=force_remote_refresh,
+            shallow=False,
+        )
+
+    def refresh_all_categories_shallow(
+        self, *, force_remote_refresh: bool = False
+    ) -> dict[str, Any]:
+        return self._refresh_all_categories(
+            force_remote_refresh=force_remote_refresh,
+            shallow=True,
+        )
+
+    def _refresh_all_categories(
+        self, *, force_remote_refresh: bool = False, shallow: bool
+    ) -> dict[str, Any]:
+        if not self._all_categories_refresh_lock.acquire(blocking=False):
+            raise RuntimeError("A full category refresh is already running.")
+        try:
+            return self._refresh_all_categories_locked(
+                force_remote_refresh=force_remote_refresh,
+                shallow=shallow,
+            )
+        finally:
+            self._all_categories_refresh_lock.release()
+
+    def _refresh_all_categories_locked(
+        self, *, force_remote_refresh: bool = False, shallow: bool
     ) -> dict[str, Any]:
         root_path = OpenListScanner.normalize_path(self.config.media_wall.media_root)
         pending_paths = [root_path]
         seen_paths: set[str] = set()
         refreshed_paths: list[str] = []
         failed_paths: list[dict[str, str]] = []
+        mode = "shallow" if shallow else "deep"
 
         while pending_paths:
             current_path = OpenListScanner.normalize_path(pending_paths.pop(0))
@@ -564,21 +617,27 @@ class MediaWallService:
                 continue
 
             try:
-                self.refresh_category(
-                    current_path, force_remote_refresh=force_remote_refresh
-                )
+                if shallow:
+                    self.refresh_category_shallow(
+                        current_path, force_remote_refresh=force_remote_refresh
+                    )
+                else:
+                    self.refresh_category(
+                        current_path, force_remote_refresh=force_remote_refresh
+                    )
                 refreshed_paths.append(current_path)
             except Exception as exc:
                 failed_paths.append(
                     {
                         "path": current_path,
-                        "stage": "refresh",
+                        "stage": mode,
                         "message": str(exc),
                     }
                 )
 
         return {
             "root_path": root_path,
+            "mode": mode,
             "refreshed_count": len(refreshed_paths),
             "failed_count": len(failed_paths),
             "refreshed_paths": refreshed_paths,

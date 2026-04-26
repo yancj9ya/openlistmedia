@@ -29,19 +29,6 @@ export function MediaListPage() {
   const [keywordInput, setKeywordInput] = useState(keyword || '');
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const pageSize = DEFAULT_PAGE_SIZE;
-  const query = useMemo(
-    () => ({
-      categoryPath,
-      includeDescendants: Boolean(categoryPath),
-      keyword,
-      type,
-      year: selectedYear ?? undefined,
-      page,
-      pageSize,
-    }),
-    [categoryPath, keyword, page, pageSize, selectedYear, type],
-  );
-  const { data, loading, error, reload: reloadMediaList } = useMediaList(query);
   const { data: recentPlays, loading: recentLoading, error: recentError } = useRecentPlays();
   const { data: rootCategories } = useCategoryTree();
   const topLevelPath = useMemo(() => {
@@ -52,6 +39,20 @@ export function MediaListPage() {
     const matched = rootChildren.find((item) => categoryPath === item.path || categoryPath.startsWith(`${item.path}/`));
     return matched?.path || rootChildren[0]?.path;
   }, [categoryPath, rootCategories]);
+  const effectiveCategoryPath = categoryPath || topLevelPath;
+  const query = useMemo(
+    () => ({
+      categoryPath: effectiveCategoryPath,
+      includeDescendants: Boolean(effectiveCategoryPath),
+      keyword,
+      type,
+      year: selectedYear ?? undefined,
+      page,
+      pageSize,
+    }),
+    [effectiveCategoryPath, keyword, page, pageSize, selectedYear, type],
+  );
+  const { data, loading, error, reload: reloadMediaList } = useMediaList(query);
   const { data: secondaryCategories, reload: reloadSecondaryCategories } = useCategoryTree(topLevelPath);
   const secondaryItems = secondaryCategories?.children || [];
   const [refreshingCategory, setRefreshingCategory] = useState(false);
