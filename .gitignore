@@ -27,7 +27,6 @@ media_wall.db-*
 media_wall.db.*
 *.db
 *.db-*
-media_wall_site/data/*.json
 
 # Tool/editor local files
 .DS_Store

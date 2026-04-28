@@ -9,5 +9,4 @@ services:
       - ./config.yml:/app/config.yml
       - ./data:/app/data
       - ./data/cache:/app/.cache
-      - ./media_wall_site/data:/app/media_wall_site/data
     restart: unless-stopped

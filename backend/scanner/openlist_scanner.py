@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 from openlist_sdk import OpenListClient
-from openlist_sdk.exceptions import OpenListHTTPError
+from openlist_sdk.exceptions import OpenListAPIError, OpenListHTTPError
 from tmdb_sdk import TMDbAPIError, TMDbClient, TMDbHTTPError
 
 from backend.config.settings import MediaWallConfig
@@ -888,8 +888,6 @@ class OpenListScanner:
         return metadata
 
     def _ensure_openlist_auth(self, client: OpenListClient) -> None:
-        if client.token:
-            return
         if not self.config.openlist_username or not self.config.openlist_password:
             raise RuntimeError(
                 "Set openlist.token or both openlist.username and openlist.password in config.yml."
@@ -905,30 +903,49 @@ class OpenListScanner:
         if token:
             self.config.openlist_token = token
 
+    def _refresh_openlist_auth(self, client: OpenListClient) -> None:
+        with self._login_lock:
+            client.set_token(None)
+            self._ensure_openlist_auth(client)
+
+    @staticmethod
+    def _is_openlist_token_expired(exc: OpenListAPIError) -> bool:
+        message = str(exc.message or "").strip().lower()
+        return exc.code == 401 and "token" in message and "expired" in message
+
     def _list_dir(
         self, client: OpenListClient, path: str, *, refresh: bool = False
     ) -> list[dict[str, Any]]:
         last_error: OpenListHTTPError | None = None
         max_attempts = self.config.list_retry_count + 1
+        auth_refreshed = False
         for attempt in range(1, max_attempts + 1):
-            try:
-                payload = client.list_dir(path, refresh=refresh)
-                if isinstance(payload, dict) and isinstance(
-                    payload.get("content"), list
-                ):
-                    return [
-                        entry
-                        for entry in payload["content"]
-                        if isinstance(entry, dict) and entry.get("name")
-                    ]
-                return []
-            except OpenListHTTPError as exc:
-                if 400 <= exc.status_code < 500:
+            while True:
+                try:
+                    payload = client.list_dir(path, refresh=refresh)
+                    if isinstance(payload, dict) and isinstance(
+                        payload.get("content"), list
+                    ):
+                        return [
+                            entry
+                            for entry in payload["content"]
+                            if isinstance(entry, dict) and entry.get("name")
+                        ]
+                    return []
+                except OpenListAPIError as exc:
+                    if self._is_openlist_token_expired(exc) and not auth_refreshed:
+                        auth_refreshed = True
+                        self._refresh_openlist_auth(client)
+                        continue
                     raise
-                last_error = exc
-                if attempt < max_attempts:
-                    delay = self.config.retry_delay_seconds * (2 ** (attempt - 1))
-                    time.sleep(delay)
+                except OpenListHTTPError as exc:
+                    if 400 <= exc.status_code < 500:
+                        raise
+                    last_error = exc
+                    if attempt < max_attempts:
+                        delay = self.config.retry_delay_seconds * (2 ** (attempt - 1))
+                        time.sleep(delay)
+                    break
         if last_error:
             raise last_error
         return []

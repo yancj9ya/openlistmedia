@@ -648,22 +648,43 @@ class MediaWallService:
         self, normalized_path: str
     ) -> tuple[str, dict[str, Any] | None]:
         client = self.scanner.get_client()
-        try:
-            payload = client.get_fs_info(normalized_path)
-            return normalized_path, payload if isinstance(payload, dict) else None
-        except (OpenListHTTPError, OpenListAPIError) as exc:
-            if not self._should_refresh_missing_file(exc):
-                raise
-            refreshed_path = self._refresh_for_missing_path(normalized_path)
-            if not refreshed_path:
-                return normalized_path, None
+        auth_refreshed = False
+        while True:
+            try:
+                payload = client.get_fs_info(normalized_path)
+                return normalized_path, payload if isinstance(payload, dict) else None
+            except OpenListAPIError as exc:
+                if self.scanner._is_openlist_token_expired(exc) and not auth_refreshed:
+                    auth_refreshed = True
+                    self.scanner._refresh_openlist_auth(client)
+                    continue
+                if not self._should_refresh_missing_file(exc):
+                    raise
+                break
+            except OpenListHTTPError as exc:
+                if not self._should_refresh_missing_file(exc):
+                    raise
+                break
+        refreshed_path = self._refresh_for_missing_path(normalized_path)
+        if not refreshed_path:
+            return normalized_path, None
+        auth_refreshed = False
+        while True:
             try:
                 payload = client.get_fs_info(refreshed_path)
-            except (OpenListHTTPError, OpenListAPIError) as retry_exc:
+            except OpenListAPIError as retry_exc:
+                if self.scanner._is_openlist_token_expired(retry_exc) and not auth_refreshed:
+                    auth_refreshed = True
+                    self.scanner._refresh_openlist_auth(client)
+                    continue
                 if self._should_refresh_missing_file(retry_exc):
                     return refreshed_path, None
                 raise
-        return normalized_path, None
+            except OpenListHTTPError as retry_exc:
+                if self._should_refresh_missing_file(retry_exc):
+                    return refreshed_path, None
+                raise
+            return refreshed_path, payload if isinstance(payload, dict) else None
 
     @staticmethod
     def _should_refresh_missing_file(exc: Exception) -> bool:

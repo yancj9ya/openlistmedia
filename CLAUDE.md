@@ -8,12 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pip install -e .                 # 安装 Python 依赖（同时安装 openlist_sdk 为可编辑包）
 python -m backend.main           # 推荐启动入口：加载配置、启动 API、启动定时刷新
-python serve_media_wall.py       # 兼容入口，内部只是转发到 backend.main.main()
-python test_openlist_sdk.py      # OpenList SDK 烟雾测试（真实请求，需要 config.yml）
-python test_tmdb_sdk.py          # TMDb SDK 烟雾测试（真实请求）
 ```
 
-仓库中没有 pytest 测试套件。`test_*.py` 是依赖真实 OpenList/TMDb 服务的手动烟雾脚本，从 `config.yml` 的 `tests.*` 节读取参数，不能在 CI 中无配置跑。
+仓库中没有 pytest 测试套件。旧的真实服务手动烟雾脚本已归档到 `old/test_openlist_sdk.py` 和 `old/test_tmdb_sdk.py`，从 `config.yml` 的 `tests.*` 节读取参数，不能在 CI 中无配置跑。
 
 ### 前端（Node 18+）
 ```bash
@@ -91,6 +88,7 @@ YAML 中的敏感字段会被以下 env 变量优先取代（逻辑在 `config/s
 - 所有 HTTP 统一走 `shared/api/client.ts::requestJson`，错误封装为 `ApiClientError`；新增接口加在 `shared/api/media-api.ts`。
 
 ## 历史遗留（不要在这里改功能）
-- `media_wall_builder.py`、`media_wall_service.py`、`media_wall_site/`：旧的"一次性全量构建静态海报墙"实现，仍存在但不再承载主业务。
-- `serve_media_wall.py`：已降级为转调 `backend.main` 的兼容壳。
+- `old/media_wall_builder.py`、`old/media_wall_service.py`、`old/media_wall_site/`：旧的"一次性全量构建静态海报墙"实现，已归档且不再承载主业务。
+- `old/serve_media_wall.py`：已归档的旧兼容入口。
+- `old/test_openlist_sdk.py`、`old/test_tmdb_sdk.py`、`old/MEDIA_WALL.md`：旧手动烟雾脚本和旧说明文档。
 - 根目录的 `media_wall.db` 是真实运行中的缓存库，体积较大（16MB+），**修改前确认是否要备份**。

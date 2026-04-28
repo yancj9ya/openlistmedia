@@ -17,12 +17,7 @@ COPY backend/ ./backend/
 COPY openlist_sdk/ ./openlist_sdk/
 COPY config_loader.py ./
 COPY tmdb_sdk.py ./
-COPY serve_media_wall.py ./
-COPY media_wall_builder.py ./
-COPY media_wall_service.py ./
 COPY README.md ./
-COPY MEDIA_WALL.md ./
-COPY media_wall_site/ ./media_wall_site/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 RUN pip install --no-cache-dir .
 EXPOSE 8000

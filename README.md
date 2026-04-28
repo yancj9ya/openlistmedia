@@ -56,7 +56,7 @@
 - 前端为独立 React 工程，生产构建后可由后端静态托管
 - 媒体数据缓存在 `media_wall.db` 中，减少重复扫描压力
 - 支持通过环境变量覆盖敏感配置
-- 保留兼容入口，便于从旧版本迁移
+- 历史静态媒体墙实现已归档到 `old/`，当前运行链路只保留 API + SPA
 
 ### 仍可继续增强的方向
 
@@ -75,15 +75,12 @@
 ├─ backend/                  # 后端 API、配置、DTO、路由、服务层
 ├─ frontend/                 # React + Vite 前端工程
 ├─ openlist_sdk/             # OpenList Python SDK
-├─ media_wall_site/          # 旧静态站点目录与兼容数据输出目录
+├─ old/                      # 历史静态媒体墙实现、兼容入口和手动烟雾脚本归档
 ├─ .github/workflows/        # CI/CD 工作流
 ├─ config_loader.py          # YAML 配置加载与保存
 ├─ config.example.yml        # 配置模板
 ├─ docker-compose.yml        # 容器部署编排
 ├─ Dockerfile                # 镜像构建文件
-├─ media_wall_builder.py     # 旧版全量构建脚本
-├─ media_wall_service.py     # 旧服务入口 / 兼容逻辑相关文件
-├─ serve_media_wall.py       # 兼容启动入口
 ├─ tmdb_sdk.py               # TMDb 调用相关代码
 ├─ media_wall.db             # SQLite 缓存数据库
 └─ README.md
@@ -136,9 +133,9 @@
 
 对 OpenList HTTP API 的 Python 封装，可单独被其他项目使用。
 
-#### `media_wall_site/`
+#### `old/`
 
-旧版静态页面目录。当前主业务已迁移到 `frontend/`，该目录更偏向兼容、参考或旧数据输出用途，不再作为主前端。
+历史归档目录，包含早期静态媒体墙实现、旧兼容入口、旧说明文档和依赖真实服务的手动烟雾脚本；当前主业务不再从这里启动或加载代码。
 
 ---
 
@@ -238,8 +235,6 @@ tmdb:
 
 media_wall:
   media_root: /影视资源
-  output: media_wall_site/data/library.json
-  site_dir: media_wall_site
   port: 8000
   item_url_template: http://127.0.0.1:5244/d{path}?sign={sign}
   database_path: media_wall.db
@@ -301,9 +296,7 @@ frontend:
 媒体扫描和缓存策略：
 
 - `media_root`：OpenList 中作为媒体根目录的路径
-- `output`：旧静态数据输出文件位置
-- `site_dir`：旧静态站点目录
-- `port`：旧逻辑兼容端口配置，后端可默认复用
+- `port`：后端兼容读取的端口配置，未配置 `backend.port` 时可复用
 - `item_url_template`：播放直链模板
 - `database_path`：SQLite 数据库路径
 - `cache_ttl_seconds`：缓存有效期（秒）
@@ -375,14 +368,6 @@ python -m backend.main
 
 - API 接口
 - 已构建前端的静态托管能力（如果 `frontend/dist` 存在）
-
-兼容方式：
-
-```bash
-python serve_media_wall.py
-```
-
-注意：`serve_media_wall.py` 当前只是兼容入口，会提示你优先使用 `backend/main.py`，然后转调同一套后端启动逻辑。
 
 ### 9.2 启动前端开发服务器
 
@@ -907,22 +892,21 @@ except OpenListHTTPError as exc:
 
 ---
 
-## 19. 兼容入口与历史说明
+## 19. 历史归档说明
 
 项目早期更偏向静态海报墙生成，目前已经演进为 API + SPA 的方式。
 
-因此你会在仓库中看到一些历史文件：
+旧实现已统一归档到 `old/`：
 
-- `media_wall_builder.py`
-- `media_wall_service.py`
-- `media_wall_site/`
-- `serve_media_wall.py`
+- `old/media_wall_builder.py`
+- `old/media_wall_service.py`
+- `old/media_wall_site/`
+- `old/serve_media_wall.py`
+- `old/test_openlist_sdk.py`
+- `old/test_tmdb_sdk.py`
+- `old/MEDIA_WALL.md`
 
-其中：
-
-- `backend/main.py` 是当前推荐启动入口
-- `serve_media_wall.py` 仅用于兼容旧使用方式
-- `media_wall_site/` 不再承载主业务前端
+当前推荐启动入口是 `backend/main.py`，正式前端入口是 `frontend/`。
 
 ---
 

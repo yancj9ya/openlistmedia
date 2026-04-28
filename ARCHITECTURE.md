@@ -357,12 +357,14 @@ EPISODE_PATTERN = r"S(?P<season>\d{1,2})E(?P<episode_start>\d{1,3})(?:-E?(?P<epi
 
 ## 12. 历史遗留文件
 
-以下文件为项目早期"一次性全量构建静态海报墙"遗留，**不再承载主业务，不要在这里改功能**：
+以下文件为项目早期"一次性全量构建静态海报墙"遗留，已统一归档到 `old/`，**不再承载主业务，不要在这里改功能**：
 
-- `media_wall_builder.py` — 旧版全量构建脚本
-- `media_wall_service.py` — 旧版服务入口
-- `media_wall_site/` — 旧版静态页面目录
-- `serve_media_wall.py` — 兼容入口，已降级为转调 `backend.main`
+- `old/media_wall_builder.py` — 旧版全量构建脚本
+- `old/media_wall_service.py` — 旧版服务入口
+- `old/media_wall_site/` — 旧版静态页面目录
+- `old/serve_media_wall.py` — 已归档的旧兼容入口
+- `old/test_openlist_sdk.py`、`old/test_tmdb_sdk.py` — 依赖真实服务的手动烟雾脚本
+- `old/MEDIA_WALL.md` — 旧静态媒体墙说明文档
 
 当前推荐入口：
 - 后端：`python -m backend.main`

@@ -12,8 +12,6 @@ tmdb:
 
 media_wall:
   media_root: /影视资源
-  output: media_wall_site/data/library.json
-  site_dir: media_wall_site
   port: 8000
   item_url_template: http://127.0.0.1:5244/d{path}?sign={sign}
   database_path: data/media_wall.db
