@@ -4,7 +4,7 @@
 
 - Python OpenList SDK
 - 基于 SQLite 缓存的媒体扫描与查询服务
-- 原生 Python HTTP 后端 API
+- FastAPI + Uvicorn 后端 API
 - React + Vite + TypeScript 前端
 - 可选 Docker / Docker Compose 部署方式
 
@@ -52,8 +52,8 @@
 
 ### 当前架构特点
 
-- 后端不依赖 Flask / FastAPI，使用原生 Python HTTP 服务
-- 前端为独立 React 工程，生产构建后可由后端静态托管
+- 后端使用 FastAPI + Uvicorn 提供 API 服务与静态托管
+- 前端为独立 React 工程，生产构建后由后端静态托管 `frontend/dist`
 - 媒体数据缓存在 `media_wall.db` 中，减少重复扫描压力
 - 支持通过环境变量覆盖敏感配置
 - 历史静态媒体墙实现已归档到 `old/`，当前运行链路只保留 API + SPA
@@ -101,10 +101,11 @@
 
 主要模块：
 
-- `backend/main.py`：推荐启动入口
-- `backend/app.py`：创建后端服务对象
-- `backend/api/server.py`：原生 HTTP Server 与静态文件托管逻辑
-- `backend/api/routes/media_routes.py`：API 路由分发
+- `backend/main.py`：推荐启动入口，使用 FastAPI + Uvicorn
+- `backend/main_fastapi.py`：兼容包装入口，转发到 `backend.main`
+- `backend/fastapi_app.py`：FastAPI 应用工厂、生命周期、CORS、异常处理
+- `backend/api/fastapi_routes.py`：API 路由定义
+- `backend/api/fastapi_static.py`：前端静态资源托管与 SPA fallback
 - `backend/service/media_service.py`：业务服务层
 - `backend/config/settings.py`：配置读取与环境变量覆盖逻辑
 - `backend/repository/`：SQLite 数据访问层
@@ -144,10 +145,11 @@
 ### 后端
 
 - Python 3.9+
+- FastAPI
+- Uvicorn
 - requests
 - PyYAML
 - SQLite
-- 原生 `http.server` / `socketserver`
 
 ### 前端
 
@@ -194,6 +196,8 @@ pip install -e .
 
 安装来源见 `pyproject.toml`，当前基础依赖包括：
 
+- `fastapi>=0.115.0`
+- `uvicorn[standard]>=0.30.0`
 - `requests>=2.31.0`
 - `PyYAML>=6.0.2`
 
@@ -366,7 +370,7 @@ python -m backend.main
 
 启动后会监听 `backend.host` 与 `backend.port` 指定的地址，并提供：
 
-- API 接口
+- FastAPI API 接口
 - 已构建前端的静态托管能力（如果 `frontend/dist` 存在）
 
 ### 9.2 启动前端开发服务器
@@ -480,6 +484,7 @@ docker compose up -d
 - 当前 `docker-compose.yml` 面向直接拉取镜像部署
 - 默认镜像地址为：`ghcr.io/yancj9ya/openlistmedia:latest`
 - 容器内同时包含前端静态资源与后端 API
+- 后端入口为 `python -m backend.main`，内部使用 FastAPI + Uvicorn
 - 默认对外暴露端口为 `8000`
 - 建议不要把真实 `config.yml` 提交到仓库中
 
@@ -906,7 +911,7 @@ except OpenListHTTPError as exc:
 - `old/test_tmdb_sdk.py`
 - `old/MEDIA_WALL.md`
 
-当前推荐启动入口是 `backend/main.py`，正式前端入口是 `frontend/`。
+当前推荐启动入口是 `python -m backend.main`，正式前端入口是 `frontend/`。
 
 ---
 
@@ -963,6 +968,6 @@ except OpenListHTTPError as exc:
 1. 配置 `config.yml`
 2. 启动 `python -m backend.main`
 3. 开发时单独启动 `frontend/` 的 Vite
-4. 生产环境构建前端并交由后端统一托管
+4. 生产环境构建前端并交由 FastAPI 后端统一托管
 
 这也是本项目目前最稳定、最清晰的使用路径。
