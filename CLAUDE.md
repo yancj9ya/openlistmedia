@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 后端（Python 3.9+）
 ```bash
 pip install -e .                 # 安装 Python 依赖（同时安装 openlist_sdk 为可编辑包）
-python -m backend.main           # 推荐启动入口：加载配置、启动 API、启动定时刷新
+python -m backend.main           # 推荐启动入口：加载配置、启动 FastAPI/Uvicorn、启动定时刷新
 ```
 
 仓库中没有 pytest 测试套件。旧的真实服务手动烟雾脚本已归档到 `old/test_openlist_sdk.py` 和 `old/test_tmdb_sdk.py`，从 `config.yml` 的 `tests.*` 节读取参数，不能在 CI 中无配置跑。
@@ -30,12 +30,14 @@ docker compose up -d             # 使用 ghcr.io/yancj9ya/openlistmedia:latest
 ## 架构要点
 
 ### 整体形态
-单进程 Python 后端 + 独立 React SPA。后端**没有使用 Flask/FastAPI**——直接基于 `http.server.BaseHTTPRequestHandler` + `socketserver.TCPServer`。同源部署模式下，后端既提供 `/api/v1/*`，又在 API 404 时回退托管 `frontend/dist` 静态资源（`backend/api/server.py` 的 `_try_serve_frontend`）。
+单进程 Python 后端 + 独立 React SPA。后端使用 FastAPI + Uvicorn 提供 `/api/v1/*`，并在同源部署模式下托管 `frontend/dist` 静态资源（由 `backend/api/fastapi_static.py` 的中间件完成）。
 
 ### backend/ 分层
-- `main.py` → `app.py::create_backend_server()` 是唯一启动路径，组装：配置 → `MediaWallService` → `ScheduledRefreshRunner` → `MediaRoutes` → `BackendHTTPRequestHandler` → `ReusableTCPServer`
+- `main.py` → `fastapi_app.py::create_fastapi_app()` 是唯一正式启动路径，组装：配置 → `MediaWallService` → `ScheduledRefreshRunner` → FastAPI 路由 → 静态中间件 → Uvicorn
+- `main_fastapi.py`：兼容入口，转发到 `backend.main`
 - `config/settings.py`：把根目录的 `config.yml`（通过 `config_loader.py` 解析）装配为 dataclass（`BackendConfig`、`APIConfig`、`FrontendConfig`、`MediaWallConfig`、`CORSConfig`）。**env 变量优先于 YAML**，支持项见下。
-- `api/routes/media_routes.py`：唯一路由分发。GET 走 `handle()`，POST 走 `handle_post()`。路由键全部是 `{api_prefix}/...` 的字符串比较，新增路由需在这里改。
+- `api/fastapi_routes.py`：FastAPI 路由定义，覆盖 GET/POST API 端点。
+- `api/fastapi_static.py`：前端静态资源托管与 SPA fallback。
 - `service/media_service.py`：业务层。持有 `MediaWallDB`（SQLite repository）和 `OpenListScanner`。
 - `repository/media_repository.py`：SQLite 访问层，表 `category_cache` + `media_items` + 最近播放历史。打开 DB 失败会 fallback 到 `.cache/media_wall_fallback.db`。
 - `scanner/openlist_scanner.py`：从 OpenList 拉目录 + 匹配目录名 + 调 TMDb 补全元数据。TMDb 结果持久化到 `.cache/media_wall_tmdb_cache.json`。
@@ -64,14 +66,8 @@ YAML 中的敏感字段会被以下 env 变量优先取代（逻辑在 `config/s
 
 前端 Vite 变量（`frontend/.env*`）：`VITE_API_BASE_URL`、`VITE_DEV_API_TARGET`、`VITE_SITE_BASE_URL`、`VITE_ADMIN_TOKEN`。`VITE_API_BASE_URL` 留空时默认 `/api/v1`（同源部署）。
 
-### 保存设置会重启进程
-`POST /api/v1/settings` 成功后 service 会起一个守护线程调用 `os.execv(sys.executable, [sys.executable, "-m", "backend.main"])` 替换进程。这意味着：
-- Windows 下 CWD 会保持；
-- 请求端会看到连接被切断；
-- **不要在保存设置后马上做依赖 DB 连接的操作**；
-- 调试时改 `backend/service/media_service.py::_restart_process` 需要手动重启验证。
-
-另外 `update_settings` 对比 `skip_directories` 变化，一旦不同会调 `db.clear_all_cache()` 丢弃所有分类缓存。
+### 保存设置会触发配置热更新
+`POST /api/v1/settings` 成功后会触发 `service` 的配置重载，并由 FastAPI 进程内的监听器刷新定时任务表达式。`skip_directories` 变化时仍会清空全部分类缓存，因此保存设置后建议重新拉取列表。
 
 ### 访问控制
 - 双口令：`frontend.admin_passcode` / `frontend.visitor_passcode`，由后端 `/auth/login` 校验并返回 `role`。
