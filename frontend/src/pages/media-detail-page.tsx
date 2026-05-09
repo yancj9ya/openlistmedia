@@ -76,6 +76,10 @@ export function MediaDetailPage() {
   const [selectedSeasonKey, setSelectedSeasonKey] = useState<string>('');
   const activeSeason = seasonOptions.find((season) => season.key === selectedSeasonKey) || seasonOptions[0] || null;
   const activeEpisodes: MediaFileDto[] = activeSeason?.episodes || [];
+  const lastPlayedEpisodeIndex = useMemo(
+    () => activeEpisodes.findIndex((file) => file.path === lastEpisodePath),
+    [activeEpisodes, lastEpisodePath],
+  );
 
   useEffect(() => {
     if (!seasonOptions.length) {
@@ -321,12 +325,14 @@ export function MediaDetailPage() {
                 ) : null}
                 <div className="detail-episode-grid">
                   {activeEpisodes.map((file, index) => {
-                    const isLastPlayed = !selectionMode && lastEpisodePath === file.path;
+                    const isPlayed = lastPlayedEpisodeIndex >= 0 && index <= lastPlayedEpisodeIndex;
+                    const isLastPlayed = lastPlayedEpisodeIndex === index;
                     const isSelected = selectionMode && selectedPaths.includes(file.path);
                     const isLoading = loadingPath === file.path && !selectionMode;
                     const className = [
                       'detail-episode-button',
                       isLoading ? 'loading' : '',
+                      isPlayed ? 'played' : '',
                       isLastPlayed ? 'last-played' : '',
                       isSelected ? 'selected' : '',
                     ]
