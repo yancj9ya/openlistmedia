@@ -7,6 +7,7 @@ import type {
   CreatePlaylistResponseDto,
   LastPlayedEpisodeDto,
   MediaDetailDto,
+  PlayedEpisodesResponseDto,
   MediaListQuery,
   MediaListResponseDto,
   PlayHistoryDto,
@@ -242,6 +243,20 @@ export async function getLastPlayedEpisode(
     }
     throw reason;
   }
+}
+
+export async function getPlayedEpisodes(
+  mediaId: number,
+  signal?: AbortSignal,
+): Promise<PlayedEpisodesResponseDto> {
+  return requestJson<PlayedEpisodesResponseDto>(`/media/${mediaId}/played-episodes`, { signal });
+}
+
+export function recordPlayedEpisodes(mediaId: number, filePaths: string[]) {
+  return requestJson<PlayedEpisodesResponseDto>(`/media/${mediaId}/played-episodes`, {
+    method: 'POST',
+    body: JSON.stringify({ file_paths: filePaths }),
+  });
 }
 
 export function createPlaylist(paths: string[]) {

@@ -805,9 +805,17 @@ class MediaWallService:
             )
         if file_path:
             self.db.upsert_last_played_episode(media_id, file_path)
+            self.db.upsert_played_episode(media_id, file_path)
 
     def get_last_played_episode(self, media_id: int) -> dict[str, Any] | None:
         return self.db.get_last_played_episode(media_id)
+
+    def record_played_episodes(self, media_id: int, file_paths: list[str]) -> list[dict[str, Any]]:
+        self.db.upsert_played_episodes(media_id, file_paths)
+        return self.db.get_played_episodes(media_id)
+
+    def get_played_episodes(self, media_id: int) -> list[dict[str, Any]]:
+        return self.db.get_played_episodes(media_id)
 
     def create_playlist(self, paths: list[str]) -> dict[str, Any]:
         cleaned = [str(p).strip() for p in paths if str(p).strip()]

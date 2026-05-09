@@ -198,6 +198,15 @@ export interface LastPlayedEpisodeDto {
   played_at: number;
 }
 
+export interface PlayedEpisodeDto {
+  file_path: string;
+  played_at: number;
+}
+
+export interface PlayedEpisodesResponseDto {
+  items: PlayedEpisodeDto[];
+}
+
 export interface CreatePlaylistResponseDto {
   id: string;
   count: number;

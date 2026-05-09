@@ -7,9 +7,11 @@ import {
   createPlaylist,
   getDefaultPlayer,
   getLastPlayedEpisode,
+  getPlayedEpisodes,
   getPlayLinkWithCategoryRefresh,
   getPlayerOptions,
   openWithPlayer,
+  recordPlayedEpisodes,
   recordPlayHistory,
   refreshMediaItem,
   setDefaultPlayer,
@@ -44,6 +46,7 @@ export function MediaDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerType>(() => getDefaultPlayer());
   const [lastEpisodePath, setLastEpisodePath] = useState<string | null>(null);
+  const [playedEpisodePaths, setPlayedEpisodePaths] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [buildingPlaylist, setBuildingPlaylist] = useState(false);
@@ -76,6 +79,7 @@ export function MediaDetailPage() {
   const [selectedSeasonKey, setSelectedSeasonKey] = useState<string>('');
   const activeSeason = seasonOptions.find((season) => season.key === selectedSeasonKey) || seasonOptions[0] || null;
   const activeEpisodes: MediaFileDto[] = activeSeason?.episodes || [];
+  const playedEpisodePathSet = useMemo(() => new Set(playedEpisodePaths), [playedEpisodePaths]);
   const lastPlayedEpisodeIndex = useMemo(
     () => activeEpisodes.findIndex((file) => file.path === lastEpisodePath),
     [activeEpisodes, lastEpisodePath],
@@ -123,6 +127,24 @@ export function MediaDetailPage() {
   }, [mediaId]);
 
   useEffect(() => {
+    if (!mediaId) {
+      setPlayedEpisodePaths([]);
+      return;
+    }
+    let cancelled = false;
+    getPlayedEpisodes(Number(mediaId))
+      .then((result) => {
+        if (!cancelled) setPlayedEpisodePaths(result.items.map((item) => item.file_path));
+      })
+      .catch(() => {
+        if (!cancelled) setPlayedEpisodePaths([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  useEffect(() => {
     if (!selectionMode) {
       setSelectedPaths([]);
     }
@@ -139,9 +161,18 @@ export function MediaDetailPage() {
     try {
       setBuildingPlaylist(true);
       setActionMessage(null);
-      const result = await createPlaylist(selectedPaths);
+      const pathsToMark = [...selectedPaths];
+      const result = await createPlaylist(pathsToMark);
       const m3uUrl = `${window.location.origin}/api/v1/playlist/${result.id}.m3u`;
       await openWithPlayer(selectedPlayer, m3uUrl);
+      if (mediaId) {
+        recordPlayedEpisodes(Number(mediaId), pathsToMark)
+          .then((payload) => setPlayedEpisodePaths(payload.items.map((item) => item.file_path)))
+          .catch(() => {
+            setPlayedEpisodePaths((current) => Array.from(new Set([...current, ...pathsToMark])));
+          });
+        setPlayedEpisodePaths((current) => Array.from(new Set([...current, ...pathsToMark])));
+      }
       setActionMessage(`已提交 ${result.count} 集播放列表给播放器。`);
       setSelectionMode(false);
       setSelectedPaths([]);
@@ -173,20 +204,21 @@ export function MediaDetailPage() {
   }
 
   async function handlePlay(path: string) {
-  try {
-    setLoadingPath(path);
-    setActionMessage(null);
-    const payload = await getPlayLinkWithCategoryRefresh(path, mediaPath);
-    if (!payload.playable_url) {
-      setActionMessage('文件路径可能已变化，已尝试刷新缓存，但仍未找到可播放地址。');
-      return;
-    }
-    if (mediaId) {
-      recordPlayHistory(Number(mediaId), path);
-      setLastEpisodePath(path);
-    }
-    const message = await openWithPlayer(selectedPlayer, payload.playable_url);
-    setActionMessage(message);
+    try {
+      setLoadingPath(path);
+      setActionMessage(null);
+      const payload = await getPlayLinkWithCategoryRefresh(path, mediaPath);
+      if (!payload.playable_url) {
+        setActionMessage('文件路径可能已变化，已尝试刷新缓存，但仍未找到可播放地址。');
+        return;
+      }
+      if (mediaId) {
+        recordPlayHistory(Number(mediaId), path);
+        setLastEpisodePath(path);
+        setPlayedEpisodePaths((current) => Array.from(new Set([...current, path])));
+      }
+      const message = await openWithPlayer(selectedPlayer, payload.playable_url);
+      setActionMessage(message);
     } catch (reason) {
       if (reason instanceof ApiClientError) {
         setActionMessage(reason.message);
@@ -325,7 +357,7 @@ export function MediaDetailPage() {
                 ) : null}
                 <div className="detail-episode-grid">
                   {activeEpisodes.map((file, index) => {
-                    const isPlayed = lastPlayedEpisodeIndex >= 0 && index <= lastPlayedEpisodeIndex;
+                    const isPlayed = playedEpisodePathSet.has(file.path);
                     const isLastPlayed = lastPlayedEpisodeIndex === index;
                     const isSelected = selectionMode && selectedPaths.includes(file.path);
                     const isLoading = loadingPath === file.path && !selectionMode;

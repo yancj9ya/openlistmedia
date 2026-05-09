@@ -117,6 +117,34 @@ def create_media_router(api_prefix: str) -> APIRouter:
             raise APIError("not_found", "No last played episode.", 404)
         return ok_response(payload)
 
+    @router.get("/media/{media_id}/played-episodes")
+    def played_episodes(
+        media_id: int,
+        service=Depends(get_service),
+    ) -> dict[str, Any]:
+        if media_id <= 0:
+            raise APIError("bad_request", "Invalid media id.", 400)
+        return ok_response({"items": service.get_played_episodes(media_id)})
+
+    @router.post("/media/{media_id}/played-episodes")
+    def record_played_episodes(
+        media_id: int,
+        payload: dict[str, Any] = Body(default_factory=dict),
+        service=Depends(get_service),
+    ) -> dict[str, Any]:
+        if media_id <= 0:
+            raise APIError("bad_request", "Invalid media id.", 400)
+        raw_paths = payload.get("file_paths")
+        if raw_paths is None:
+            raw_path = payload.get("file_path")
+            raw_paths = [raw_path] if raw_path else []
+        if not isinstance(raw_paths, list) or not raw_paths:
+            raise APIError("bad_request", "Missing field: file_paths", 400)
+        file_paths = [str(path).strip() for path in raw_paths if str(path).strip()]
+        if not file_paths:
+            raise APIError("bad_request", "Missing field: file_paths", 400)
+        return ok_response({"items": service.record_played_episodes(media_id, file_paths)})
+
     @router.get("/media/{media_id}")
     def media_detail(media_id: int, service=Depends(get_service)) -> dict[str, Any]:
         if media_id <= 0:

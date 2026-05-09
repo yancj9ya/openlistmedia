@@ -152,6 +152,23 @@ class MediaWallDB:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS episode_played (
+                    media_id INTEGER NOT NULL,
+                    file_path TEXT NOT NULL,
+                    played_at INTEGER NOT NULL,
+                    PRIMARY KEY(media_id, file_path),
+                    FOREIGN KEY(media_id) REFERENCES media_items(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_episode_played_media_id
+                ON episode_played(media_id)
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS tmdb_cache (
                     cache_key TEXT PRIMARY KEY,
                     payload_json TEXT NOT NULL,
@@ -644,6 +661,42 @@ class MediaWallDB:
         if not row:
             return None
         return {"file_path": row["file_path"], "played_at": int(row["played_at"])}
+
+    def upsert_played_episode(self, media_id: int, file_path: str) -> None:
+        self.upsert_played_episodes(media_id, [file_path])
+
+    def upsert_played_episodes(self, media_id: int, file_paths: list[str]) -> None:
+        cleaned = [str(path).strip() for path in file_paths if str(path).strip()]
+        if not cleaned:
+            return
+        played_at = int(time.time())
+        with self._connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO episode_played(media_id, file_path, played_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(media_id, file_path) DO UPDATE SET
+                    played_at = excluded.played_at
+                """,
+                [(media_id, path, played_at) for path in cleaned],
+            )
+            conn.commit()
+
+    def get_played_episodes(self, media_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT file_path, played_at
+                FROM episode_played
+                WHERE media_id = ?
+                ORDER BY played_at DESC, file_path ASC
+                """,
+                (media_id,),
+            ).fetchall()
+        return [
+            {"file_path": row["file_path"], "played_at": int(row["played_at"])}
+            for row in rows
+        ]
 
     def load_all_tmdb_cache(self) -> dict[str, dict[str, Any]]:
         with self._connect() as conn:
