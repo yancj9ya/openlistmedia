@@ -722,14 +722,20 @@ button:disabled {
   overflow-y: hidden;
   scrollbar-width: none;
   gap: 6px;
+  min-width: 0;
 }
 
 .media-card-tags::-webkit-scrollbar {
   display: none;
 }
 
+.chip-row.media-card-tags {
+  flex-wrap: nowrap;
+}
+
 .media-card-tags .chip {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
