@@ -718,14 +718,21 @@ button:disabled {
 
 .media-card-tags {
   flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  gap: 6px;
+  gap: clamp(1px, 2vw, 6px);
 }
 
 .media-card-tags::-webkit-scrollbar {
   display: none;
+}
+
+.chip-row.media-card-tags {
+  flex-wrap: nowrap;
+  gap: clamp(1px, 2vw, 6px);
 }
 
 .media-card-tags .chip {
