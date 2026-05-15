@@ -37,6 +37,5 @@ export function formatPlayedAt(value: string | null | undefined) {
   }
 
   const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  return sameYear ? `${monthDay} ${time}` : `${date.getFullYear()}-${monthDay}`;
+  return sameYear ? monthDay : `${date.getFullYear()}-${monthDay}`;
 }
